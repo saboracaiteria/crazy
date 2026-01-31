@@ -46,7 +46,20 @@ class FPSController {
             })
             .catch(e => {
                 console.error("Could not load fps_config.json", e);
-                this.updateDebug("Error loading config!", "red");
+                // Fallback config if file not found
+                this.config = {
+                    transform: {
+                        scale: 0.001,
+                        position: [0.3, -0.4, -0.5],
+                        rotation: [0, Math.PI, 0]
+                    },
+                    animations: {
+                        idle: "Idle",
+                        run: "Run",
+                        shoot: "Shoot"
+                    }
+                };
+                this.setupModel();
             });
     }
 
@@ -73,7 +86,6 @@ class FPSController {
             // 2. Measure Center
             const box = new THREE.Box3().setFromObject(rawModel);
             const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
 
             // 3. Create Wrapper
             this.group = new THREE.Group();
@@ -98,7 +110,7 @@ class FPSController {
 
             // 6. Animations (on RAW model)
             this.mixer = new THREE.AnimationMixer(rawModel);
-            const anims = this.baseModel.userData.animations;
+            const anims = this.baseModel.userData.animations || [];
             this.actions = {};
 
             // Map animations
@@ -131,12 +143,6 @@ class FPSController {
 
     update(dt) {
         if (this.mixer) this.mixer.update(dt);
-        
-        // Debug Info Update (optional, maybe throttle)
-        if (this.group && this.debugEl) {
-             const t = this.group.transform; // No, it's group props
-             // ...
-        }
     }
 
     setVisible(visible) {
@@ -145,17 +151,13 @@ class FPSController {
 
     playAnimation(name) {
         if (this.actions[name]) {
-            // Stop others? Simple crossfade maybe
-            // For now just play
             this.actions[name].reset().play();
         }
     }
     
-    // INPUT HANDLING FOR CALIBRATION
     handleInput(e) {
         if (!this.group || !this.group.visible) return;
 
-        // Arrows, PageUp/Dn, IJKL, +/-
         const isShift = e.shiftKey;
         const step = isShift ? 0.1 : 0.01;
         const rStep = 0.1;
