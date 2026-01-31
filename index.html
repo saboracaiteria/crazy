@@ -309,7 +309,7 @@
 
         .vapor-sun {
             position: absolute;
-            bottom: 24%;
+            bottom: 35%; /* Raised from 24% to be above mountains */
             left: 20%;
             transform: translateX(-50%);
             width: 48vh;
@@ -411,28 +411,28 @@
         }
 
         .menu-content {
-            position: relative;
-            background: rgba(10, 15, 20, 0.85);
-            padding: 20px;
+            position: absolute;
+            background: rgba(10, 15, 20, 0.9);
+            padding: 8px; /* Redução final de padding */
             border: 1px solid rgba(0, 243, 255, 0.2);
             border-top: 3px solid #00f3ff;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 243, 255, 0.1);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
             text-align: center;
-            width: 300px;
-            max-width: 90%;
-            z-index: 10;
-            backdrop-filter: blur(12px);
-            border-radius: 12px;
-            background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%);
+            width: 220px; /* Reduzido de 240px para 220px */
+            max-width: 85%;
+            z-index: 100;
+            backdrop-filter: blur(15px);
+            border-radius: 8px;
         }
 
         #start-view {
             position: absolute !important;
-            right: 10% !important;
+            right: 5% !important; /* Mais para a direita */
             top: 50% !important;
             transform: translateY(-50%) !important;
             left: auto !important;
             margin: 0 !important;
+            display: block !important; /* Garante que inicie visível na posição certa */
         }
 
         #settings-view {
@@ -443,27 +443,22 @@
             right: auto !important;
         }
 
+        /* Removido centralização automática em telas menores para manter posição lateral */
         @media (max-width: 800px) {
             #start-view {
-                position: relative !important;
-                right: auto !important;
-                top: auto !important;
-                transform: none !important;
-                margin-top: 10vh !important;
-                margin-left: auto !important;
-                margin-right: auto !important;
-                left: auto !important;
+                right: 2% !important;
+                width: 200px !important;
             }
         }
 
         h1 {
             font-family: 'Orbitron', sans-serif;
             text-transform: uppercase;
-            letter-spacing: 4px;
+            letter-spacing: 1px;
             color: #fff;
-            text-shadow: 0px 0px 15px rgba(0, 243, 255, 0.8);
-            margin-bottom: 5px;
-            font-size: 1.8em;
+            text-shadow: 0px 0px 10px rgba(0, 243, 255, 0.8);
+            margin-bottom: 3px;
+            font-size: 1.2em; /* Título bem menor */
             font-weight: 900;
         }
 
@@ -480,23 +475,22 @@
         .menu-btn {
             background: linear-gradient(90deg, rgba(0, 243, 255, 0.1) 0%, rgba(0, 0, 0, 0.3) 100%);
             color: #00f3ff;
-            border: 1px solid rgba(0, 243, 255, 0.3);
-            border-left: 3px solid #00f3ff;
-            padding: 12px;
-            margin: 6px 0;
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-left: 2px solid #00f3ff;
+            padding: 6px 12px; /* Compactação extrema */
+            margin: 3px 0;
             font-family: 'Rajdhani', sans-serif;
             font-weight: 700;
-            font-size: 14px;
+            font-size: 12px; /* Fonte menor */
             cursor: pointer;
             width: 100%;
             text-transform: uppercase;
-            letter-spacing: 2px;
+            letter-spacing: 0.5px;
             transition: all 0.2s ease;
             position: relative;
             overflow: hidden;
-            border-radius: 4px;
+            border-radius: 3px;
             text-align: left;
-            padding-left: 20px;
         }
 
         .menu-btn:hover {
@@ -542,14 +536,14 @@
         }
 
         .menu-footer {
-            margin-top: 20px;
-            font-size: 10px;
+            margin-top: 10px; /* Reduzido de 20px */
+            font-size: 9px; /* Reduzido de 10px */
             color: rgba(255, 255, 255, 0.3);
             font-family: 'Rajdhani';
             letter-spacing: 1px;
             text-transform: uppercase;
             border-top: 1px solid rgba(255, 255, 255, 0.05);
-            padding-top: 10px;
+            padding-top: 5px; /* Reduzido de 10px */
             width: 100%;
         }
 
@@ -1034,14 +1028,14 @@
         <div class="menu-content" style="border-color: #00f3ff; width: 400px; max-width: 90%;">
             <h1 style="color: #00f3ff; margin-bottom: 10px;" id="lobby-title">LOBBY</h1>
             <div style="font-family: 'Rajdhani'; color: #aaa; margin-bottom: 15px;">Status: <span id="connection-status"
-                    style="color: #ffff00">Waiting...</span></div>
+                    style="color: #ffff00">Aguardando oponente...</span></div>
             <div style="text-align: left; margin-bottom: 5px; color: #fff;">Operators:</div>
             <div id="lobby-player-list">
                 <div style="color: #666; font-style: italic; padding: 10px; text-align: center;">Searching signal...
                 </div>
             </div>
-            <div style="text-align: left; margin-top: 10px; color: #fff; font-size: 10px;">DEBUG LOG:</div>
-            <div id="connection-log"></div>
+            <!-- DEBUG LOG REMOVED -->
+            <div id="connection-log" style="display: none;"></div>
             <button class="menu-btn" id="start-mp-btn" disabled
                 style="margin-top: 20px; border-color: #00f3ff; color: #00f3ff;">START</button>
             <button class="menu-btn secondary" id="lobby-back-btn">BACK</button>
@@ -1099,6 +1093,7 @@
         try { app = initializeApp(firebaseConfig); auth = getAuth(app); db = getDatabase(app); logSystem("Firebase Initialized.", "success"); } catch (e) { console.error(e); }
 
         let myUserId = null, myRef = null, remotePlayers = {}, isMultiplayerMode = false, isCoopMode = false, networkInterval = null;
+        let lastActivityTime = Date.now(); // Monitoramento de inatividade
         let isThirdPerson = true, isAiming = false, isManualFiring = false, moveInput = { x: 0, y: 0 }, keyState = { w: false, a: false, s: false, d: false }, pitch = 0, yaw = 0, velocityY = 0, isGrounded = true, recoil = 0, gunRecoilZ = 0, lastShotTime = 0, lastStepTime = 0, minimapCanvas, minimapCtx;
 
         // --- RESTORED GLOBALS ---
@@ -1347,7 +1342,7 @@
             const unsubAuth = onAuthStateChanged(auth, (user) => {
                 if (user) {
                     myUserId = user.uid;
-                    document.getElementById("connection-status").innerText = "Connected"; document.getElementById("connection-status").style.color = "#00FF41";
+                    document.getElementById("connection-status").innerText = "Permitido o acesso"; document.getElementById("connection-status").style.color = "#00FF41";
                     logSystem("ID: " + myUserId.substring(0, 6), "success");
                     document.getElementById("start-mp-btn").disabled = false;
 
@@ -1368,7 +1363,7 @@
 
         function renderLobbyList(data) {
             const listEl = document.getElementById("lobby-player-list"); listEl.innerHTML = "";
-            if (!data) { listEl.innerHTML = '<div style="padding:10px; text-align:center; color: #ff00ff; font-weight: bold; animation: pulseAlert 2s infinite;">WAITING FOR OPPONENTS...</div>'; return; }
+            if (!data) { listEl.innerHTML = '<div style="padding:10px; text-align:center; color: #ff00ff; font-weight: bold; animation: pulseAlert 2s infinite;">AGUARDANDO OPONENTE...</div>'; return; }
             const allIds = Object.keys(data).sort();
             isMasterClient = (allIds[0] === myUserId);
             const now = Date.now(); let count = 0;
@@ -1377,10 +1372,10 @@
                 if (p.lastUpdate && (now - p.lastUpdate < 10000)) {
                     count++; const div = document.createElement("div"); div.className = "lobby-player-item"; if (key === myUserId) div.classList.add("me");
                     let roleTag = (key === allIds[0] && isCoopMode) ? '<span style="color:gold; font-size:10px;"> [HOST]</span>' : '';
-                    div.innerHTML = `<span>${key === myUserId ? "YOU" : `Op. ${key.substring(0, 4)}`}${roleTag}</span> <span>ONLINE</span>`; listEl.appendChild(div);
+                    div.innerHTML = `<span>${key === myUserId ? "VOCÊ" : `Op. ${key.substring(0, 4)}`}${roleTag}</span> <span>ONLINE</span>`; listEl.appendChild(div);
                 }
             });
-            if (count === 0) listEl.innerHTML = '<div style="padding:10px; text-align:center; color: #ff00ff; font-weight: bold; animation: pulseAlert 2s infinite;">WAITING FOR OPPONENTS...</div>';
+            if (count === 0) listEl.innerHTML = '<div style="padding:10px; text-align:center; color: #ff00ff; font-weight: bold; animation: pulseAlert 2s infinite;">AGUARDANDO OPONENTE...</div>';
         }
 
         function createHtmlCoin() {
@@ -1934,8 +1929,27 @@
             networkInterval = setInterval(() => {
                 if (!myRef || !isPlaying) return;
                 const p = playerGroup.position, r = yaw, now = Date.now();
+                
+                // Monitoramento de inatividade (1 minuto)
+                if (moveInput.x !== 0 || moveInput.y !== 0 || isManualFiring) {
+                    lastActivityTime = now;
+                }
+                
+                if (now - lastActivityTime > 60000) {
+                    console.log("Inatividade detectada. Abortando missão...");
+                    document.getElementById('abort-mission-btn').click();
+                    return;
+                }
+
                 if (p.distanceTo(lastSentPosition) > 0.01 || Math.abs(r - lastSentRotation) > 0.01 || (now - lastSentTime > 2000)) {
-                    update(myRef, { x: parseFloat(p.x.toFixed(2)), y: parseFloat(p.y.toFixed(2)), z: parseFloat(p.z.toFixed(2)), rot: parseFloat(r.toFixed(2)), lastUpdate: serverTimestamp() });
+                    update(myRef, { 
+                        x: parseFloat(p.x.toFixed(2)), 
+                        y: parseFloat(p.y.toFixed(2)), 
+                        z: parseFloat(p.z.toFixed(2)), 
+                        rot: parseFloat(r.toFixed(2)), 
+                        lastUpdate: serverTimestamp(),
+                        active: true 
+                    });
                     lastSentPosition.copy(p); lastSentRotation = r; lastSentTime = now;
                 }
             }, 50);
@@ -1945,12 +1959,19 @@
                 const d = s.val(); if (!d) return;
                 const now = Date.now(), active = new Set(); let c = 0;
 
-                const allIds = Object.keys(d).sort();
-                const newMasterStatus = (allIds[0] === myUserId);
+                // Filtra apenas jogadores ativos nos últimos 10 segundos
+                const activeIds = Object.keys(d).filter(k => (d[k].lastUpdate || 0) > (now - 10000)).sort();
+                
+                // Migração de Host: O primeiro jogador ativo da lista ordenada assume
+                const newMasterStatus = (activeIds[0] === myUserId);
                 if (isCoopMode && newMasterStatus !== isMasterClient) {
                     isMasterClient = newMasterStatus;
                     document.getElementById('master-status').style.display = isMasterClient ? 'block' : 'none';
-                    if (isMasterClient) logSystem("You are the new HOST.", "success");
+                    if (isMasterClient) {
+                        logSystem("Você é o novo HOST (Sincronizando...)", "success");
+                        // Ao assumir, o novo host garante que o estado atual seja mantido
+                        update(ref(db, `${roomPath}/state`), { lastHostMigration: serverTimestamp() });
+                    }
                 }
 
                 Object.keys(d).forEach(k => {
@@ -2455,7 +2476,17 @@
                 };
             }
             document.getElementById('lobby-back-btn').onclick = () => { hideCrazyInviteButton(); document.getElementById('lobby-screen').style.display = 'none'; document.getElementById('start-view').style.display = 'block'; };
-            document.getElementById('pause-btn').addEventListener('click', (e) => { e.stopPropagation(); if (!isPlaying) return; isPlaying = false; gamePaused = true; document.exitPointerLock(); document.getElementById('settings-view').style.display = 'block'; document.getElementById('start-view').style.display = 'none'; document.getElementById('main-menu').style.display = 'block'; document.getElementById('main-menu').classList.add('paused-mode'); });
+            document.getElementById('pause-btn').addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                if (!isPlaying) return; 
+                isPlaying = false; 
+                gamePaused = true; 
+                document.exitPointerLock(); 
+                document.getElementById('settings-view').style.display = 'block'; 
+                document.getElementById('start-view').style.setProperty('display', 'none', 'important'); 
+                document.getElementById('main-menu').style.display = 'block'; 
+                document.getElementById('main-menu').classList.add('paused-mode'); 
+            });
             document.getElementById('abort-mission-btn').onclick = () => { hideCrazyInviteButton(); document.getElementById('settings-view').style.display = 'none'; document.getElementById('hud').style.display = 'none'; document.getElementById('mobile-ui').style.display = 'none'; document.getElementById('crosshair').style.display = 'none'; document.getElementById('main-menu').style.display = 'block'; document.getElementById('start-view').style.display = 'block'; document.getElementById('main-menu').classList.remove('paused-mode'); isPlaying = false; gamePaused = false; scene.add(camera); cleanupMultiplayer(); playMenuMusic(); };
             document.getElementById('retry-btn').onclick = () => { resetGame(isMultiplayerMode ? (isCoopMode ? 'coop' : 'multi') : 'single'); document.getElementById('hud').style.display = 'block'; if (!isPC) document.getElementById('mobile-ui').style.display = 'block'; };
             document.getElementById('win-retry-btn').onclick = () => { resetGame('single'); document.getElementById('hud').style.display = 'block'; if (!isPC) document.getElementById('mobile-ui').style.display = 'block'; };
@@ -2486,10 +2517,27 @@
                 if (!isPC) document.getElementById('mobile-ui').style.display = 'block';
             };
             document.getElementById('menu-return-btn').onclick = () => { document.getElementById('game-over-screen').style.display = 'none'; document.getElementById('main-menu').style.display = 'block'; document.getElementById('start-view').style.display = 'block'; document.getElementById('hud').style.display = 'none'; document.getElementById('crosshair').style.display = 'none'; scene.add(camera); playMenuMusic(); };
-            document.getElementById('settings-btn').onclick = () => { document.getElementById('start-view').style.display = 'none'; document.getElementById('settings-view').style.display = 'block'; };
+            document.getElementById('settings-btn').onclick = () => { 
+                document.getElementById('start-view').style.setProperty('display', 'none', 'important'); 
+                document.getElementById('settings-view').style.display = 'block'; 
+            };
             document.getElementById('mobile-fs-btn').onclick = () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); };
             document.getElementById('mobile-exit-btn').onclick = () => { if (confirm("Do you want to quit?")) window.close(); else window.location.href = "about:blank"; };
-            document.getElementById('back-btn').onclick = () => { document.getElementById('settings-view').style.display = 'none'; if (gamePaused) { document.getElementById('main-menu').style.display = 'none'; document.getElementById('hud').style.display = 'block'; document.getElementById('crosshair').style.display = 'block'; if (!isPC) document.getElementById('mobile-ui').style.display = 'block'; document.getElementById('main-menu').classList.remove('paused-mode'); isPlaying = true; gamePaused = false; if (isPC) document.body.requestPointerLock(); } else { document.getElementById('start-view').style.display = 'block'; } };
+            document.getElementById('back-btn').onclick = () => { 
+                document.getElementById('settings-view').style.display = 'none'; 
+                if (gamePaused) { 
+                    document.getElementById('main-menu').style.display = 'none'; 
+                    document.getElementById('hud').style.display = 'block'; 
+                    document.getElementById('crosshair').style.display = 'block'; 
+                    if (!isPC) document.getElementById('mobile-ui').style.display = 'block'; 
+                    document.getElementById('main-menu').classList.remove('paused-mode'); 
+                    isPlaying = true; 
+                    gamePaused = false; 
+                    if (isPC) document.body.requestPointerLock(); 
+                } else { 
+                    document.getElementById('start-view').style.setProperty('display', 'block', 'important'); 
+                } 
+            };
             document.getElementById('vol-slider').oninput = (e) => { settings.volume = parseInt(e.target.value) / 100; if (bgmPlayer) bgmPlayer.volume = settings.volume; };
             document.getElementById('fov-slider').oninput = (e) => { settings.fov = parseInt(e.target.value); camera.fov = settings.fov; camera.updateProjectionMatrix(); };
             document.getElementById('sens-slider').oninput = (e) => { settings.sens = (parseInt(e.target.value) / 50) * 0.003; };
@@ -2714,12 +2762,14 @@
                     if (!checkWall(np.x, np.z)) e.position.copy(np); e.rotation.y = Math.atan2(dir.x, dir.z);
 
                     if (isCoopMode && isMasterClient) {
-                        if (Math.random() < 0.2) {
+                        // Sincronização de rede (throttle para não sobrecarregar o Firebase)
+                        if (Math.random() < 0.15) {
                             update(ref(db, `${roomPath}/state/enemies/${e.userData.index}`), {
                                 x: parseFloat(e.position.x.toFixed(2)),
                                 z: parseFloat(e.position.z.toFixed(2)),
                                 rot: parseFloat(e.rotation.y.toFixed(2)),
-                                dead: false
+                                dead: false,
+                                hp: e.userData.hp // Sincroniza HP também para o novo host
                             });
                         }
                     }
