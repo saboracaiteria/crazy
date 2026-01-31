@@ -46,11 +46,11 @@ class FPSController {
             })
             .catch(e => {
                 console.error("Could not load fps_config.json", e);
-                // Fallback config if file not found
+                // Ajustado: Arma mais à frente (z: -0.6) e um pouco acima (y: -0.35 em vez de -0.4)
                 this.config = {
                     transform: {
                         scale: 0.001,
-                        position: [0.3, -0.4, -0.5],
+                        position: [0.35, -0.35, -0.6],
                         rotation: [0, Math.PI, 0]
                     },
                     animations: {
@@ -73,34 +73,25 @@ class FPSController {
             return;
         }
 
-        // Clean up old
         if (this.group) {
             this.camera.remove(this.group);
             this.group = null;
         }
 
         try {
-            // 1. Clone RAW Model
             const rawModel = this.baseModel.clone();
-
-            // 2. Measure Center
             const box = new THREE.Box3().setFromObject(rawModel);
             const center = box.getCenter(new THREE.Vector3());
 
-            // 3. Create Wrapper
             this.group = new THREE.Group();
-
-            // 4. Center Raw Model in Wrapper
             rawModel.position.copy(center).negate();
             this.group.add(rawModel);
 
-            // 5. Apply Config to Wrapper
             const t = this.config.transform;
             this.group.scale.set(t.scale, t.scale, t.scale);
             this.group.position.fromArray(t.position);
             this.group.rotation.fromArray(t.rotation);
 
-            // Render Order & Depths
             rawModel.traverse(o => {
                 if (o.isMesh) {
                     o.renderOrder = 10;
@@ -108,12 +99,10 @@ class FPSController {
                 }
             });
 
-            // 6. Animations (on RAW model)
             this.mixer = new THREE.AnimationMixer(rawModel);
             const anims = this.baseModel.userData.animations || [];
             this.actions = {};
 
-            // Map animations
             for (const [key, glbName] of Object.entries(this.config.animations)) {
                 if (!glbName) continue;
                 const clip = anims.find(c => c.name === glbName);
@@ -122,19 +111,14 @@ class FPSController {
                 }
             }
 
-            // Start Idle or Fallback
             if (this.actions.idle) this.actions.idle.play();
             else if (anims.length > 0) {
                 this.actions['fallback'] = this.mixer.clipAction(anims[0]);
                 this.actions['fallback'].play();
             }
 
-            // Initially visible (assuming FPS mode starts or checked externally)
             this.camera.add(this.group);
-            
             this.updateDebug(`READY!\nAnims: ${Object.keys(this.actions).join(', ')}`);
-            console.log("🔫 FPSController: Model Setup Complete");
-
         } catch (e) {
             console.error("FPS Setup Error:", e);
             this.updateDebug(`Setup Error: ${e.message}`, "red");

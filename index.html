@@ -2283,7 +2283,22 @@
 
         // --- AQUI ESTAVA O PROBLEMA: A FUNÇÃO SPAWNENEMIES AGORA ESTÁ DE VOLTA ---
         function spawnEnemies(count, level) {
-            enemies.forEach(e => scene.remove(e)); enemies = []; const ehp = 100 + ((level - 1) * 25), ec = count, rng = mulberry32(level + 5000);
+            // Auto-cleanup: remove old enemies from scene and memory
+            enemies.forEach(e => {
+                scene.remove(e);
+                e.traverse(child => {
+                    if (child.isMesh) {
+                        if (child.geometry) child.geometry.dispose();
+                        if (child.material) {
+                            if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                            else child.material.dispose();
+                        }
+                    }
+                });
+            });
+            enemies = [];
+            
+            const ehp = 100 + ((level - 1) * 25), ec = count, rng = mulberry32(level + 5000);
             const enemyData = {};
             for (let i = 0; i < ec; i++) {
                 let rx, rz; do { rx = Math.floor(rng() * mazeSize); rz = Math.floor(rng() * mazeSize); } while (mazeMap[rz][rx] === 1);
@@ -2866,17 +2881,17 @@
                 }
                 if (isThirdPerson) {
                     const ay = yaw; const camOx = Math.sin(ay) * 1.8 + Math.cos(ay) * config.shoulderOffset; const camOz = Math.cos(ay) * 1.8 - Math.sin(ay) * config.shoulderOffset; const lookOx = -Math.sin(ay) * 20 + Math.cos(ay) * config.shoulderOffset; const lookOz = -Math.cos(ay) * 20 - Math.sin(ay) * config.shoulderOffset;
-                    // Camera fixed above right shoulder, looking down
-                    const shoulderHeight = 1.6; // Height above ground
-                    const shoulderRight = 0.4; // Offset to the right
-                    const camDist = 1.8; // Distance behind player
+                    // Camera adjusted: higher, further back and more to the side for lateral view
+                    const shoulderHeight = 2.0; // Raised from 1.6
+                    const shoulderRight = 0.8; // Moved further right from 0.4
+                    const camDist = 2.5; // Moved further back from 1.8
                     
                     const camPos = new THREE.Vector3(shoulderRight, shoulderHeight, camDist);
                     camPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
                     camera.position.lerp(playerGroup.position.clone().add(camPos), 0.15);
                     
-                    // Look target: slightly ahead and down
-                    const lookTarget = new THREE.Vector3(shoulderRight, shoulderHeight - 0.5, -10);
+                    // Look target: slightly ahead and down, centered on player's forward path
+                    const lookTarget = new THREE.Vector3(0, shoulderHeight - 0.8, -10);
                     lookTarget.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
                     camera.lookAt(playerGroup.position.clone().add(lookTarget).add(new THREE.Vector3(0, pitch * 5, 0)));
                     
