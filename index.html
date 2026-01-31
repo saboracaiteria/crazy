@@ -5,45 +5,109 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Canaan: Combat Zone</title>
-    <script src="https://sdk.crazygames.com/crazygames-sdk-v2.js"></script>
     <script>
-        // === CRAZYGAMES SDK V2 - DETECÇÃO IMEDIATA ===
-        // Chama gameplayStart() imediatamente para forçar detecção do SDK
-        (function () {
-            window.CrazySDK = null;
+        // === LAUNCHER & ANTI-BLOCKING SYSTEM ===
+        window.CrazySDK = null;
+        window.testMode = false;
 
-            if (window.CrazyGames && window.CrazyGames.SDK) {
-                var sdk = window.CrazyGames.SDK;
-                window.CrazySDK = sdk;
+        function initLauncher() {
+            // Cria o overlay do launcher
+            const launcher = document.createElement('div');
+            launcher.id = 'launcher-overlay';
+            launcher.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: linear-gradient(135deg, #050505 0%, #1a1a1a 100%);
+                z-index: 10000; display: flex; flex-direction: column;
+                justify-content: center; align-items: center; color: white;
+                font-family: 'Orbitron', sans-serif; text-align: center;
+            `;
 
-                console.log("🎮 CrazyGames SDK v2 loaded!");
-
-                try {
-                    // 1. Indica que o jogo está carregando
-                    if (sdk.game && sdk.game.sdkGameLoadingStart) {
-                        sdk.game.sdkGameLoadingStart();
-                        console.log("📍 sdkGameLoadingStart() OK");
+            launcher.innerHTML = `
+                <h1 style="color: #00f3ff; text-shadow: 0 0 20px #00f3ff; margin-bottom: 30px;">CANAAN LAUNCHER</h1>
+                <div style="display: flex; flex-direction: column; gap: 20px; width: 300px;">
+                    <button id="launch-crazy" class="launcher-btn" style="border-color: #00f3ff; color: #00f3ff;">START (CRAZYGAMES)</button>
+                    <button id="launch-test" class="launcher-btn" style="border-color: #ff8c00; color: #ff8c00;">TEST MODE (BYPASS SDK) 🧪</button>
+                </div>
+                <p style="margin-top: 40px; font-size: 12px; color: #666; font-family: 'Rajdhani';">
+                    Use Test Mode to play on local server or mobile without SDK blocking.
+                </p>
+                <style>
+                    .launcher-btn {
+                        background: rgba(255,255,255,0.05);
+                        border: 2px solid; padding: 20px; font-size: 16px;
+                        font-family: 'Orbitron'; cursor: pointer; transition: 0.3s;
+                        text-transform: uppercase; letter-spacing: 2px;
                     }
+                    .launcher-btn:hover { background: rgba(255,255,255,0.15); transform: scale(1.05); }
+                </style>
+            `;
 
-                    // 2. Indica que terminou de carregar
-                    if (sdk.game && sdk.game.sdkGameLoadingStop) {
-                        sdk.game.sdkGameLoadingStop();
-                        console.log("📍 sdkGameLoadingStop() OK");
-                    }
+            document.body.appendChild(launcher);
 
-                    // 3. FORÇA DETECÇÃO: Chama gameplayStart imediatamente
-                    // O menu principal também é considerado gameplay para detecção
-                    if (sdk.game && sdk.game.gameplayStart) {
-                        sdk.game.gameplayStart();
-                        console.log("📍 gameplayStart() OK - SDK deve ser detectado agora!");
-                    }
-                } catch (e) {
-                    console.warn("SDK call error:", e);
+            document.getElementById('launch-crazy').onclick = () => {
+                console.log("🚀 Loading CrazyGames SDK...");
+                launcher.innerHTML = "<h1>LOADING SDK...</h1>";
+                loadCrazySDK();
+            };
+
+            document.getElementById('launch-test').onclick = () => {
+                console.log("🧪 Entering Test Mode...");
+                window.testMode = true;
+                mockCrazySDK();
+                launcher.remove();
+                // O init() do jogo será chamado normalmente
+            };
+        }
+
+        function loadCrazySDK() {
+            const script = document.createElement('script');
+            script.src = "https://sdk.crazygames.com/crazygames-sdk-v2.js";
+            script.onload = () => {
+                console.log("🎮 CrazyGames SDK Loaded!");
+                if (window.CrazyGames && window.CrazyGames.SDK) {
+                    window.CrazySDK = window.CrazyGames.SDK;
+                    try {
+                        if (window.CrazySDK.game.sdkGameLoadingStart) window.CrazySDK.game.sdkGameLoadingStart();
+                    } catch (e) { }
                 }
-            } else {
-                console.log("🎮 Running without CrazyGames SDK");
-            }
-        })();
+                document.getElementById('launcher-overlay').remove();
+            };
+            script.onerror = () => {
+                alert("Failed to load SDK. Entering Test Mode.");
+                window.testMode = true;
+                mockCrazySDK();
+                document.getElementById('launcher-overlay').remove();
+            };
+            document.head.appendChild(script);
+        }
+
+        function mockCrazySDK() {
+            window.CrazySDK = {
+                ad: {
+                    requestAd: (type, callbacks) => {
+                        console.log(`[TEST] Ad requested: ${type}`);
+                        if (callbacks && callbacks.adStarted) callbacks.adStarted();
+                        setTimeout(() => { if (callbacks && callbacks.adFinished) callbacks.adFinished(); }, 100);
+                    }
+                },
+                game: {
+                    gameplayStart: () => console.log("[TEST] gameplayStart()"),
+                    gameplayStop: () => console.log("[TEST] gameplayStop()"),
+                    sdkGameLoadingStart: () => console.log("[TEST] sdkGameLoadingStart()"),
+                    sdkGameLoadingStop: () => console.log("[TEST] sdkGameLoadingStop()"),
+                    loadingStop: () => console.log("[TEST] loadingStop()"),
+                    showInviteButton: async () => { console.log("[TEST] showInviteButton()"); return window.location.href; },
+                    hideInviteButton: () => console.log("[TEST] hideInviteButton()"),
+                    inviteLink: async () => { console.log("[TEST] inviteLink()"); return window.location.href; }
+                }
+            };
+            window.getCrazySDK = () => window.CrazySDK;
+            // Desativa overlay de rotação se necessário
+            const rotate = document.getElementById('rotate-overlay');
+            if (rotate) rotate.style.display = 'none';
+        }
+
+        window.addEventListener('DOMContentLoaded', initLauncher);
     </script>
 
     <link
@@ -255,34 +319,41 @@
             box-shadow: 0 0 100px #ff0055, 0 0 40px #ff8c00 inset;
             z-index: 1;
             /* Modernized scanlines with smoother falloff */
-            -webkit-mask-image: linear-gradient(to bottom, 
-                black 60%, 
-                transparent 60%, transparent 63%, 
-                black 63%, black 67%, 
-                transparent 67%, transparent 71%, 
-                black 71%, black 76%, 
-                transparent 76%, transparent 82%, 
-                black 82%, black 89%, 
-                transparent 89%, transparent 97%, 
-                black 97%
-            );
-            mask-image: linear-gradient(to bottom, 
-                black 60%, 
-                transparent 60%, transparent 63%, 
-                black 63%, black 67%, 
-                transparent 67%, transparent 71%, 
-                black 71%, black 76%, 
-                transparent 76%, transparent 82%, 
-                black 82%, black 89%, 
-                transparent 89%, transparent 97%, 
-                black 97%
-            );
+            -webkit-mask-image: linear-gradient(to bottom,
+                    black 60%,
+                    transparent 60%, transparent 63%,
+                    black 63%, black 67%,
+                    transparent 67%, transparent 71%,
+                    black 71%, black 76%,
+                    transparent 76%, transparent 82%,
+                    black 82%, black 89%,
+                    transparent 89%, transparent 97%,
+                    black 97%);
+            mask-image: linear-gradient(to bottom,
+                    black 60%,
+                    transparent 60%, transparent 63%,
+                    black 63%, black 67%,
+                    transparent 67%, transparent 71%,
+                    black 71%, black 76%,
+                    transparent 76%, transparent 82%,
+                    black 82%, black 89%,
+                    transparent 89%, transparent 97%,
+                    black 97%);
             animation: sunPulse 4s ease-in-out infinite alternate;
         }
 
         @keyframes sunPulse {
-            from { opacity: 0.9; transform: translateX(-50%) scale(1.0); filter: blur(0px); }
-            to { opacity: 1.0; transform: translateX(-50%) scale(1.02); filter: blur(1px); }
+            from {
+                opacity: 0.9;
+                transform: translateX(-50%) scale(1.0);
+                filter: blur(0px);
+            }
+
+            to {
+                opacity: 1.0;
+                transform: translateX(-50%) scale(1.02);
+                filter: blur(1px);
+            }
         }
 
         .vapor-grid {
@@ -927,6 +998,9 @@
             </div>
             <button class="menu-btn" id="multiplayer-btn" style="border-color: #00f3ff; color: #00f3ff;">ONLINE PVP<span
                     class="online-badge" style="background: #00f3ff; color: #000;">LIVE</span></button>
+            <button class="menu-btn" id="bypass-btn"
+                style="border-color: #ff8c00; color: #ff8c00; background: rgba(255, 140, 0, 0.1);">BYPASS SDK / TEST
+                MODE 🧪</button>
             <button class="menu-btn" id="coop-btn" style="border-color: #FF00FF; color: #FF00FF;">CO-OP PVE<span
                     class="online-badge" style="background: #FF00FF; color: #fff;">BETA</span></button>
             <button class="menu-btn secondary" id="settings-btn">SETTINGS</button>
@@ -2337,6 +2411,7 @@
             document.getElementById('play-btn').onclick = () => { resetGame('single'); };
             document.getElementById('multiplayer-btn').onclick = () => showLobby('pvp');
             document.getElementById('coop-btn').onclick = () => showLobby('coop');
+
             // --- LÓGICA DO CONVITE (ASYNC - SDK retorna Promises) ---
             const inviteBtn = document.getElementById('invite-btn');
             if (inviteBtn) {
