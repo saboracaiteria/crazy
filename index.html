@@ -2107,7 +2107,7 @@
 
             const pelve = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.25), matBlack);
             pelve.position.y = 0.97; // Adjusted to keep feet on ground
-            pelve.rotation.y = Math.PI; // Correct orientation
+            pelve.rotation.y = 0; // Fixed: Was Math.PI (backwards)
             en.add(pelve);
 
             const abdomen = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 0.22), matBlack);
@@ -2204,8 +2204,15 @@
             if (isMultiplayerMode) {
                 playerLives--;
                 if (playerLives <= 0) {
-                    showGameOver();
-                    return;
+                    if (isCoopMode) {
+                        showGameOver();
+                    } else {
+                        // No PVP, se as vidas acabarem, apenas reseta as vidas para continuar a partida
+                        // ou você pode querer terminar a partida. O pedido diz "nunca deve ir para sala de cooperativo"
+                        // Vamos apenas resetar a posição e HP para manter o player no PVP.
+                        playerLives = 5;
+                        logSystem("Vidas resetadas no PVP.", "normal");
+                    }
                 }
             }
             let rx, rz; do { rx = Math.floor(Math.random() * mazeSize); rz = Math.floor(Math.random() * mazeSize); } while (mazeMap[rz][rx] === 1);
@@ -2238,7 +2245,7 @@
 
             const pelve = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.25), matBlack);
             pelve.position.y = 0.97; // Adjusted to keep feet on ground
-            pelve.rotation.y = Math.PI; // Correct orientation
+            pelve.rotation.y = 0; // Fixed: Was Math.PI (backwards)
             g.add(pelve);
 
             const abdomen = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 0.22), matBlack);
@@ -2298,8 +2305,32 @@
         }
 
         function updateRemotePlayer(id, d) {
-            if (!remotePlayers[id]) { const m = createRemotePlayerMesh(); m.position.set(d.x, d.y, d.z); m.userData = { id: id, isPlayer: true }; m.children.forEach(c => c.userData = { id: id, isPlayer: true }); scene.add(m); remotePlayers[id] = { mesh: m, targetPos: new THREE.Vector3(d.x, d.y, d.z), targetRot: d.rot }; }
-            else { const r = remotePlayers[id]; r.targetPos.set(d.x, d.y, d.z); r.targetRot = d.rot; r.mesh.userData.id = id; }
+            if (!remotePlayers[id]) { 
+                const m = createRemotePlayerMesh(); 
+                m.position.set(d.x, d.y, d.z); 
+                m.userData = { id: id, isPlayer: true, walkCycle: 0 }; 
+                m.children.forEach(c => c.userData = { id: id, isPlayer: true }); 
+                scene.add(m); 
+                
+                // Cache leg pivots for animation
+                const rLeg = m.getObjectByName("rLegPivot");
+                const lLeg = m.getObjectByName("lLegPivot");
+                const rCanela = m.getObjectByName("rCanelaPivot");
+                const lCanela = m.getObjectByName("lCanelaPivot");
+                
+                remotePlayers[id] = { 
+                    mesh: m, 
+                    targetPos: new THREE.Vector3(d.x, d.y, d.z), 
+                    targetRot: d.rot,
+                    pivots: { rLeg, lLeg, rCanela, lCanela }
+                }; 
+            }
+            else { 
+                const r = remotePlayers[id]; 
+                r.targetPos.set(d.x, d.y, d.z); 
+                r.targetRot = d.rot; 
+                r.mesh.userData.id = id; 
+            }
         }
 
         // --- AQUI ESTAVA O PROBLEMA: A FUNÇÃO SPAWNENEMIES AGORA ESTÁ DE VOLTA ---
@@ -2683,12 +2714,31 @@
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i], pp = b.position.clone(); b.position.add(b.userData.velocity); b.userData.life--;
                 let hit = false; const d = b.position.distanceTo(pp), dir = b.position.clone().sub(pp).normalize(); bulletRaycaster.set(pp, dir); bulletRaycaster.far = d;
-                if (isMultiplayerMode) {
+                if (isMultiplayerMode && !isCoopMode) {
                     const hits = bulletRaycaster.intersectObjects(Object.values(remotePlayers).map(r => r.mesh), true);
                     if (hits.length > 0) {
-                        let o = hits[0].object; while (o.parent && !o.userData.id) o = o.parent;
-                        if (o.userData && o.userData.id && !isCoopMode) {
-                            hit = true; triggerHitMarker(); runTransaction(ref(db, `${roomPath}/players/${o.userData.id}`), (t) => { if (t && t.hp > 0) { t.hp -= 10; if (t.hp <= 0) { t.hp = 0; registerKill(); } } return t; });
+                        let o = hits[0].object; 
+                        // Traverse up to find the root mesh with the ID
+                        while (o.parent && !o.userData.id) o = o.parent;
+                        
+                        if (o.userData && o.userData.id) {
+                            hit = true; 
+                            triggerHitMarker(); 
+                            const targetId = o.userData.id;
+                            // Use transaction to safely update HP on Firebase
+                            runTransaction(ref(db, `${roomPath}/players/${targetId}`), (t) => { 
+                                if (t) { 
+                                    if (t.hp > 0) {
+                                        t.hp -= 10; 
+                                        if (t.hp <= 0) { 
+                                            t.hp = 0; 
+                                            // We only register the kill locally for the shooter
+                                            registerKill(); 
+                                        } 
+                                    }
+                                } 
+                                return t; 
+                            });
                         }
                     }
                 }
@@ -2853,6 +2903,37 @@
                 playerGroup.rotation.y = yaw;
 
                 if (Math.abs(moveInput.x) > 0.1 || Math.abs(moveInput.y) > 0.1 || keyState.w || keyState.s || keyState.a || keyState.d) { walkCycle += 0.2; } else walkCycle = 0;
+
+                // UPDATE REMOTE PLAYERS ANIMATION AND LERP
+                Object.values(remotePlayers).forEach(r => {
+                    const m = r.mesh;
+                    const prevPos = m.position.clone();
+                    m.position.lerp(r.targetPos, 0.15);
+                    m.rotation.y = THREE.MathUtils.lerp(m.rotation.y, r.targetRot, 0.15);
+
+                    // Leg animation for remote players
+                    const distMoved = m.position.distanceTo(prevPos);
+                    if (distMoved > 0.01) {
+                        m.userData.walkCycle = (m.userData.walkCycle || 0) + 0.2;
+                        const wc = m.userData.walkCycle;
+                        const legSwing = Math.sin(wc) * 0.5;
+                        const kneeFlex = Math.abs(Math.cos(wc)) * 0.4;
+
+                        if (r.pivots) {
+                            r.pivots.lLeg.rotation.x = legSwing;
+                            r.pivots.lCanela.rotation.x = -kneeFlex;
+                            r.pivots.rLeg.rotation.x = -legSwing;
+                            r.pivots.rCanela.rotation.x = -Math.abs(Math.sin(wc)) * 0.4;
+                        }
+                    } else {
+                        if (r.pivots) {
+                            r.pivots.lLeg.rotation.x = THREE.MathUtils.lerp(r.pivots.lLeg.rotation.x, 0, 0.1);
+                            r.pivots.lCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.lCanela.rotation.x, 0, 0.1);
+                            r.pivots.rLeg.rotation.x = THREE.MathUtils.lerp(r.pivots.rLeg.rotation.x, 0, 0.1);
+                            r.pivots.rCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.rCanela.rotation.x, 0, 0.1);
+                        }
+                    }
+                });
 
                 const ch = document.getElementById('crosshair');
                 if (ch) { if (isAiming && !isThirdPerson) ch.style.opacity = '0'; else ch.style.opacity = '0.9'; }
