@@ -2140,7 +2140,10 @@
             lArmPivot.rotation.x = Math.PI / 2;
             lArmPivot.rotation.y = 0.5;
 
-            en.add(new THREE.Mesh(new THREE.BoxGeometry(3.5, 4.0, 3.5), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })));
+            // Hitbox for bullets (visible for debugging if needed, but keeping it transparent)
+            const hitbox = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.0, 1.0), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+            hitbox.position.y = 1.0;
+            en.add(hitbox);
             en.userData = { hp: 100, maxHp: 100, dead: false, lastShot: 0, isEnemyRoot: true, index: index, reactionTime: Math.max(200, 1000 - (level * 150)), targetPos: null };
             return en;
         }
@@ -2334,18 +2337,18 @@
                 if (isMultiplayerMode) {
                     if (isCoopMode) {
                         setupCoopPresence();
-                        // No Coop, o Master Client vai resetar o nível no Firebase para 1
                         if (isMasterClient) {
                             update(ref(db, `${roomPath}/state`), { level: 1, kills: 0, enemies: {}, kits: {} });
                         }
                     } else setupPresence();
+                }
 
-                    // --- PVP SEM BOTS ---
-                    // Bots removidos do modo multiplayer para aguardar oponentes reais
-                    console.log("Multiplayer mode: Waiting for real players...");
-                } else {
+                // Spawn enemies if not in pure PVP mode
+                if (!isMultiplayerMode || isCoopMode) {
                     const botCount = 15 + (currentLevel - 1) * 2;
                     spawnEnemies(botCount, currentLevel);
+                } else {
+                    console.log("Multiplayer mode: Waiting for real players...");
                 }
                 const kitCount = currentLevel <= 2 ? 6 : 8;
                 spawnHealthKits(kitCount);
@@ -2627,11 +2630,27 @@
                     }
                 }
                 if ((!isMultiplayerMode || isCoopMode) && !hit) {
+                    // Check intersection with all enemies
                     const hits = bulletRaycaster.intersectObjects(enemies, true);
                     if (hits.length > 0) {
-                        let o = hits[0].object; while (o.parent && !o.userData.isEnemyRoot) o = o.parent;
-                        if (o.userData && o.userData.isEnemyRoot && !o.userData.dead) {
-                            o.userData.hp -= 25; triggerHitMarker(); const bm = o.getObjectByName("body"); if (bm) { const c = bm.material.emissive.getHex(); bm.material.emissive.setHex(0xff0000); setTimeout(() => bm.material.emissive.setHex(c), 100); }
+                        let hitObj = hits[0].object;
+                        // Find the root enemy group
+                        let o = hitObj;
+                        while (o && o.parent && !o.userData.isEnemyRoot) {
+                            o = o.parent;
+                        }
+                        
+                        if (o && o.userData && o.userData.isEnemyRoot && !o.userData.dead) {
+                            o.userData.hp -= 25;
+                            triggerHitMarker();
+                            // Visual feedback on hit
+                            o.traverse(child => {
+                                if (child.isMesh && child.material && child.material.emissive) {
+                                    const oldColor = child.material.emissive.getHex();
+                                    child.material.emissive.setHex(0xff0000);
+                                    setTimeout(() => { if(child.material) child.material.emissive.setHex(oldColor); }, 100);
+                                }
+                            });
                             if (o.userData.hp <= 0) killEnemyLocal(o, true);
                             hit = true;
                         }
@@ -2847,9 +2866,22 @@
                 }
                 if (isThirdPerson) {
                     const ay = yaw; const camOx = Math.sin(ay) * 1.8 + Math.cos(ay) * config.shoulderOffset; const camOz = Math.cos(ay) * 1.8 - Math.sin(ay) * config.shoulderOffset; const lookOx = -Math.sin(ay) * 20 + Math.cos(ay) * config.shoulderOffset; const lookOz = -Math.cos(ay) * 20 - Math.sin(ay) * config.shoulderOffset;
-                    camera.position.lerp(new THREE.Vector3(playerGroup.position.x + camOx, playerGroup.position.y + 1.2 + pitch * 1.5, playerGroup.position.z + camOz), 0.15);
-                    camera.lookAt(playerGroup.position.x + lookOx, playerGroup.position.y + 1.1 + pitch * 10, playerGroup.position.z + lookOz);
-                    if (camera.position.y < 0.5) camera.position.y = 0.5;
+                    // Camera fixed above right shoulder, looking down
+                    const shoulderHeight = 1.6; // Height above ground
+                    const shoulderRight = 0.4; // Offset to the right
+                    const camDist = 1.8; // Distance behind player
+                    
+                    const camPos = new THREE.Vector3(shoulderRight, shoulderHeight, camDist);
+                    camPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+                    camera.position.lerp(playerGroup.position.clone().add(camPos), 0.15);
+                    
+                    // Look target: slightly ahead and down
+                    const lookTarget = new THREE.Vector3(shoulderRight, shoulderHeight - 0.5, -10);
+                    lookTarget.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+                    camera.lookAt(playerGroup.position.clone().add(lookTarget).add(new THREE.Vector3(0, pitch * 5, 0)));
+                    
+                    // Prevent camera from going below shoulder height
+                    if (camera.position.y < playerGroup.position.y + shoulderHeight) camera.position.y = playerGroup.position.y + shoulderHeight;
                 } else {
                     // Locked camera without bobbing for steady aim
                     const headOffset = new THREE.Vector3(0, 1.65, 0);
