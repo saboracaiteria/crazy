@@ -1328,11 +1328,23 @@
             if (mode === 'coop') {
                 roomPath = 'rooms/coop'; isCoopMode = true;
                 title.innerText = "CO-OP PVE"; title.style.color = "#FF00FF"; btn.style.borderColor = "#FF00FF"; btn.style.color = "#FF00FF";
-                btn.onclick = () => { hideCrazyInviteButton(); resetGame('coop'); };
+                btn.onclick = () => { 
+                    hideCrazyInviteButton(); 
+                    if (isMasterClient) {
+                        update(ref(db, `${roomPath}/state`), { startTrigger: serverTimestamp() });
+                    }
+                    resetGame('coop'); 
+                };
             } else {
                 roomPath = 'rooms/pvp'; isCoopMode = false;
                 title.innerText = "ONLINE PVP"; title.style.color = "#00f3ff"; btn.style.borderColor = "#00f3ff"; btn.style.color = "#00f3ff";
-                btn.onclick = () => { hideCrazyInviteButton(); resetGame('multi'); };
+                btn.onclick = () => { 
+                    hideCrazyInviteButton(); 
+                    if (isMasterClient) {
+                        update(ref(db, `${roomPath}/state`), { startTrigger: serverTimestamp() });
+                    }
+                    resetGame('multi'); 
+                };
             }
 
             // CRAZYGAMES: Mostrar botão de convite nativo
@@ -1351,16 +1363,23 @@
                     logSystem("ID: " + myUserId.substring(0, 6), "success");
                     document.getElementById("start-mp-btn").disabled = false;
 
-                    // --- LÓGICA DE ESPERA ---
-                    setTimeout(() => {
-                        const listEl = document.getElementById("lobby-player-list");
-                        if (listEl && listEl.innerText.includes("No operators")) {
-                            logSystem("Waiting for opponents...", "normal");
-                        }
-                    }, 5000);
+                    // Registrar presença no lobby
+                    const lobbyRef = ref(db, `${roomPath}/players/${myUserId}`);
+                    set(lobbyRef, { id: myUserId, lastUpdate: serverTimestamp(), inLobby: true });
+                    onDisconnect(lobbyRef).remove();
 
                     if (unsubLobbyPlayers) unsubLobbyPlayers();
                     unsubLobbyPlayers = onValue(ref(db, roomPath + '/players'), (snapshot) => renderLobbyList(snapshot.val()), (error) => logSystem("DB Error: " + error.message, "error"));
+                    
+                    // Listener para início remoto do jogo
+                    const startRef = ref(db, `${roomPath}/state/startTrigger`);
+                    onValue(startRef, (s) => {
+                        if (s.val() && !isPlaying) {
+                            console.log("Remote start triggered!");
+                            resetGame(isCoopMode ? 'coop' : 'multi');
+                        }
+                    });
+
                     unsubAuth();
                 } else { logSystem("Logged Out.", "error"); }
             });
@@ -1385,7 +1404,10 @@
 
         function createHtmlCoin() {
             const el = document.createElement('div'); el.className = 'scene scene-object'; el.innerHTML = getCoinHTML();
-            el.style.width = '400px'; el.style.height = '400px'; document.getElementById('html-layer').appendChild(el); return el;
+            el.style.width = '400px'; el.style.height = '400px'; 
+            el.style.position = 'absolute';
+            el.style.pointerEvents = 'none';
+            document.getElementById('html-layer').appendChild(el); return el;
         }
 
         // --- CORREÇÃO DA MOEDA 3D (REMOVIDO AÇAITERIA) ---
@@ -1858,16 +1880,32 @@
         function setupSkyLogo() { document.getElementById('html-layer').innerHTML = ''; trackedHtmlObjects = []; trackedHtmlObjects.push({ el: createHtmlCoin(), direction: new THREE.Vector3(0.2, 1.5, -0.5).normalize(), distance: 800, type: 'sky', active: true }); }
 
         function updateHtmlObjects() {
-            if (!isPlaying) { document.getElementById('html-layer').style.display = 'none'; return; }
-            document.getElementById('html-layer').style.display = 'block';
+            const layer = document.getElementById('html-layer');
+            if (!isPlaying || !layer) { if(layer) layer.style.display = 'none'; return; }
+            layer.style.display = 'block';
             const wh = window.innerWidth / 2, hh = window.innerHeight / 2, cp = new THREE.Vector3(); camera.getWorldPosition(cp);
             trackedHtmlObjects.forEach(o => {
                 if (!o.active) return;
                 const p = o.type === 'sky' ? cp.clone().add(o.direction.clone().multiplyScalar(o.distance)) : o.pos.clone();
-                occlusionRaycaster.set(cp, p.clone().sub(cp).normalize());
-                if (occlusionRaycaster.intersectObjects(walls).some(i => i.distance < cp.distanceTo(p))) { o.el.style.display = 'none'; return; }
+                
+                // Verificação de oclusão apenas se não for objeto do céu
+                if (o.type !== 'sky') {
+                    occlusionRaycaster.set(cp, p.clone().sub(cp).normalize());
+                    if (occlusionRaycaster.intersectObjects(walls).some(i => i.distance < cp.distanceTo(p))) { o.el.style.display = 'none'; return; }
+                }
+                
                 const tp = p.clone().project(camera);
-                if (tp.z < 1) { o.el.style.display = 'block'; o.el.style.left = `${(tp.x * wh) + wh}px`; o.el.style.top = `${-(tp.y * hh) + hh}px`; o.el.style.transform = `translate(-50%, -50%) scale(0.2)`; } else o.el.style.display = 'none';
+                // Verifica se está na frente da câmera e dentro dos limites da tela
+                if (tp.z < 1 && Math.abs(tp.x) < 1.1 && Math.abs(tp.y) < 1.1) { 
+                    o.el.style.display = 'block'; 
+                    o.el.style.left = `${(tp.x * wh) + wh}px`; 
+                    o.el.style.top = `${-(tp.y * hh) + hh}px`; 
+                    // Escala dinâmica baseada na distância para evitar "moeda gigante"
+                    const scale = o.type === 'sky' ? 0.15 : Math.max(0.05, 0.5 / (cp.distanceTo(p) * 0.1));
+                    o.el.style.transform = `translate(-50%, -50%) scale(${scale})`; 
+                } else {
+                    o.el.style.display = 'none';
+                }
             });
         }
 
