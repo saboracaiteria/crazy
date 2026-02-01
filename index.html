@@ -957,7 +957,7 @@
     <div id="damage-overlay"></div>
     <div id="crosshair"></div>
     <div id="hud">
-        <div class="info-panel">HP: <span id="hp">100</span>% | <span id="lives-display" style="display:none;">LIVES:
+        <div class="info-panel">HP: <span id="hp">100</span>% | <span id="lives-display" style="display:inline;">LIVES:
                 <span id="lives-count">5</span> | </span>LVL: <span id="level-display">1</span>/10 | KILLS: <span
                 id="score">0</span></div>
         <div id="multiplayer-status">ONLINE: <span id="mp-count">0</span> PLAYERS</div>
@@ -1296,6 +1296,11 @@
             bgmPlayer.play().catch(() => {/* Aguardando interação do usuário para reproduzir áudio */ });
         }
 
+        // Pré-carregar sons para evitar atraso
+        const soundCache = {
+            shoot: new Audio('sons/tiro.mp3')
+        };
+
         function playSound(type) {
             if (!audioCtx) initAudio();
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -1303,7 +1308,7 @@
             osc.connect(gain); gain.connect(audioCtx.destination);
 
             if (type === 'shoot') {
-                const audio = new Audio('sons/tiro.mp3');
+                const audio = soundCache.shoot.cloneNode();
                 audio.volume = settings.volume;
                 audio.play().catch(() => { });
             }
@@ -1712,6 +1717,7 @@
             headPivot.position.y = 0.18; neckPivot.add(headPivot);
             const mHead = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.25), matSkin);
             headPivot.add(mHead);
+            addEyes(mHead);
 
             const mHelmet = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.27), matGreen);
             mHelmet.position.y = 0.12; headPivot.add(mHelmet);
@@ -2098,6 +2104,27 @@
             });
         }
 
+        function addEyes(headMesh) {
+            const eyeGeo = new THREE.BoxGeometry(0.05, 0.05, 0.02);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const pupilGeo = new THREE.BoxGeometry(0.02, 0.02, 0.01);
+            const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(-0.06, 0.05, -0.125);
+            headMesh.add(leftEye);
+            const leftPupil = new THREE.Mesh(pupilGeo, pupilMat);
+            leftPupil.position.set(0, 0, -0.01);
+            leftEye.add(leftPupil);
+
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            rightEye.position.set(0.06, 0.05, -0.125);
+            headMesh.add(rightEye);
+            const rightPupil = new THREE.Mesh(pupilGeo, pupilMat);
+            rightPupil.position.set(0, 0, -0.01);
+            rightEye.add(rightPupil);
+        }
+
         function createEnemyMesh(x, z, level, index) {
             const en = new THREE.Group(); en.position.set(x, 0, z);
             const matBlack = new THREE.MeshStandardMaterial({ color: 0x222222 });
@@ -2124,6 +2151,7 @@
 
             const headE = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.25), matSkin);
             headE.position.y = 0.18; neck.add(headE);
+            addEyes(headE);
 
             const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.27), matEnemy);
             helmet.position.y = 0.12; headE.add(helmet);
@@ -2155,8 +2183,10 @@
             const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4), wMat);
             barrel.rotation.x = Math.PI / 2; barrel.position.z = -0.4; gun.add(barrel);
             gun.position.set(0, -0.15, 0); gun.rotation.x = -Math.PI / 2;
+            gun.name = "gun"; // Nomear a arma para referência
             rElbow.add(gun);
 
+            // Braços apontando para frente (não levantados)
             rArmPivot.rotation.x = Math.PI / 2;
             lArmPivot.rotation.x = Math.PI / 2;
             lArmPivot.rotation.y = 0.5;
@@ -2165,7 +2195,25 @@
             const hitbox = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.0, 1.0), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
             hitbox.position.y = 1.0;
             en.add(hitbox);
-            en.userData = { hp: 100, maxHp: 100, dead: false, lastShot: 0, isEnemyRoot: true, index: index, reactionTime: Math.max(200, 1000 - (level * 150)), targetPos: null };
+            en.userData = { 
+                hp: 100, 
+                maxHp: 100, 
+                dead: false, 
+                lastShot: 0, 
+                isEnemyRoot: true, 
+                index: index, 
+                reactionTime: Math.max(200, 1000 - (level * 150)), 
+                targetPos: null,
+                walkCycle: 0,
+                pivots: {
+                    lLeg: lLegPivot,
+                    rLeg: rLegPivot,
+                    lCanela: lCanelaPivot,
+                    rCanela: rCanelaPivot,
+                    rArm: rArmPivot,
+                    lArm: lArmPivot
+                }
+            };
             return en;
         }
 
@@ -2262,6 +2310,7 @@
 
             const headR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.25), matSkin);
             headR.position.y = 0.18; neck.add(headR);
+            addEyes(headR);
 
             const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.27), matCamo);
             helmet.position.y = 0.12; headR.add(helmet);
@@ -2295,8 +2344,10 @@
             const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4), wMat);
             barrel.rotation.x = Math.PI / 2; barrel.position.z = -0.4; gun.add(barrel);
             gun.position.set(0, -0.15, 0); gun.rotation.x = -Math.PI / 2;
+            gun.name = "gun"; // Nomear a arma para referência
             rElbow.add(gun);
 
+            // Braços apontando para frente (não levantados)
             rArmPivot.rotation.x = Math.PI / 2;
             lArmPivot.rotation.x = Math.PI / 2;
             lArmPivot.rotation.y = 0.5;
@@ -2322,7 +2373,11 @@
                     mesh: m, 
                     targetPos: new THREE.Vector3(d.x, d.y, d.z), 
                     targetRot: d.rot,
-                    pivots: { rLeg, lLeg, rCanela, lCanela }
+                    pivots: { 
+                        rLeg, lLeg, rCanela, lCanela,
+                        rArm: m.getObjectByName("rArmPivot"),
+                        lArm: m.getObjectByName("lArmPivot")
+                    }
                 }; 
             }
             else { 
@@ -2365,7 +2420,7 @@
         }
 
         function resetGame(mode = 'single') {
-            console.log("Starting gameplayStart...");
+            console.log("Starting gameplayStart with mode:", mode);
             try {
                 // AVISAR CRAZYGAMES QUE O JOGO COMEÇOU IMEDIATAMENTE
                 notifyGameplayStart();
@@ -2375,11 +2430,12 @@
                 if (!isPC) document.getElementById('mobile-ui').style.display = 'block';
                 document.getElementById('lobby-screen').style.display = 'none';
 
-                cleanupMultiplayer();
+                // IMPORTANTE: Não limpar tudo se já estivermos no lobby
+                if (mode === 'single') cleanupMultiplayer();
 
                 currentLevel = 1; playerHP = 100; playerLives = 5; score = 0; velocityY = 0; pitch = 0; yaw = 0; camera.rotation.set(0, 0, 0);
                 isMultiplayerMode = (mode === 'multi' || mode === 'coop'); isCoopMode = (mode === 'coop');
-                document.getElementById('lives-display').style.display = isMultiplayerMode ? 'inline' : 'none';
+                document.getElementById('lives-display').style.display = 'inline';
                 document.getElementById('lives-count').innerText = playerLives;
 
                 if (mode === 'multi') roomPath = 'rooms/pvp';
@@ -2698,7 +2754,36 @@
 
         }
         function checkWall(x, z) { for (let w of walls) if (Math.abs(x - w.position.x) < 2.8 && Math.abs(z - w.position.z) < 2.8) return true; return false; }
-        function spawnBullet() { const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 4, 4), new THREE.MeshBasicMaterial({ color: 0x00FF41 })); const p = new THREE.Vector3(), d = new THREE.Vector3(); camera.getWorldPosition(p); camera.getWorldDirection(d); const r = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion), u = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion); b.position.copy(p.clone().add(d).add(r.multiplyScalar(0.15)).add(u.multiplyScalar(-0.1))); b.userData = { velocity: d.multiplyScalar(5.0), life: 300 }; scene.add(b); bullets.push(b); }
+        function spawnBullet() { 
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 4, 4), new THREE.MeshBasicMaterial({ color: 0x00FF41 })); 
+            const p = new THREE.Vector3(), d = new THREE.Vector3(); 
+            
+            // Obter posição da arma do player
+            if (gunGroup) {
+                gunGroup.getWorldPosition(p);
+                // Ajustar para a ponta do cano
+                const gunDir = new THREE.Vector3(0, 0, -0.6);
+                gunDir.applyQuaternion(gunGroup.getWorldQuaternion(new THREE.Quaternion()));
+                p.add(gunDir);
+            } else {
+                // Fallback para câmera se gunGroup não existir
+                camera.getWorldPosition(p);
+            }
+            
+            // Direção sempre vem da câmera (mira)
+            camera.getWorldDirection(d); 
+            
+            // CORREÇÃO À QUEIMA-ROUPA: 
+            // Se o bot estiver muito perto, o tiro pode "nascer" atrás dele.
+            // Vamos recuar a posição inicial do Raycast para garantir que pegue objetos colados.
+            const backPos = p.clone().sub(d.clone().multiplyScalar(1.0));
+            
+            b.position.copy(p); 
+            // lastPos agora começa um pouco atrás para detectar colisões imediatas
+            b.userData = { velocity: d.multiplyScalar(5.0), life: 300, lastPos: backPos }; 
+            scene.add(b); 
+            bullets.push(b); 
+        }
         function triggerHitMarker() { const c = document.getElementById('crosshair'); c.classList.add('hit-marker'); setTimeout(() => c.classList.remove('hit-marker'), 150); }
         function registerKill() {
             score++;
@@ -2712,51 +2797,64 @@
             let active = 0; enemies.forEach(e => { if (!e.userData.dead) active++; });
             if (enemies.length > 0 && active === 0 && isPlaying) { nextLevel(); return; }
             for (let i = bullets.length - 1; i >= 0; i--) {
-                const b = bullets[i], pp = b.position.clone(); b.position.add(b.userData.velocity); b.userData.life--;
-                let hit = false; const d = b.position.distanceTo(pp), dir = b.position.clone().sub(pp).normalize(); bulletRaycaster.set(pp, dir); bulletRaycaster.far = d;
+                const b = bullets[i];
+                const pp = b.userData.lastPos ? b.userData.lastPos.clone() : b.position.clone();
+                b.userData.lastPos = b.position.clone();
+                b.position.add(b.userData.velocity); 
+                b.userData.life--;
+                
+                let hit = false; 
+                const d = b.position.distanceTo(pp);
+                const dir = b.userData.velocity.clone().normalize();
+                bulletRaycaster.set(pp, dir); 
+                bulletRaycaster.far = d;
+                // Colisão com Jogadores (PVP)
                 if (isMultiplayerMode && !isCoopMode) {
                     const hits = bulletRaycaster.intersectObjects(Object.values(remotePlayers).map(r => r.mesh), true);
                     if (hits.length > 0) {
                         let o = hits[0].object; 
-                        // Traverse up to find the root mesh with the ID
                         while (o.parent && !o.userData.id) o = o.parent;
-                        
                         if (o.userData && o.userData.id) {
-                            hit = true; 
-                            triggerHitMarker(); 
+                            hit = true; triggerHitMarker(); 
                             const targetId = o.userData.id;
-                            // Use transaction to safely update HP on Firebase
                             runTransaction(ref(db, `${roomPath}/players/${targetId}`), (t) => { 
-                                if (t) { 
-                                    if (t.hp > 0) {
-                                        t.hp -= 10; 
-                                        if (t.hp <= 0) { 
-                                            t.hp = 0; 
-                                            // We only register the kill locally for the shooter
-                                            registerKill(); 
-                                        } 
-                                    }
-                                } 
+                                if (t && t.hp > 0) { t.hp -= 10; if (t.hp <= 0) { t.hp = 0; registerKill(); } } 
                                 return t; 
                             });
                         }
                     }
                 }
+                
+                // Colisão com Inimigos (Single/Coop)
                 if ((!isMultiplayerMode || isCoopMode) && !hit) {
-                    // Check intersection with all enemies
+                    // 1. Raycast Check (Trajeto da bala)
                     const hits = bulletRaycaster.intersectObjects(enemies, true);
-                    if (hits.length > 0) {
-                        let hitObj = hits[0].object;
-                        // Find the root enemy group
-                        let o = hitObj;
-                        while (o && o.parent && !o.userData.isEnemyRoot) {
-                            o = o.parent;
+                    
+                    // 2. Volume Check (À queima-roupa)
+                    // Se a bala acabou de ser disparada, checamos se ela já está dentro de um bot
+                    let volumeHit = null;
+                    if (b.userData.life > 295) {
+                        for (let e of enemies) {
+                            if (e.userData.dead) continue;
+                            const dist = b.position.distanceTo(e.position);
+                            if (dist < 1.5) { // Raio de colisão do bot
+                                volumeHit = e;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (hits.length > 0 || volumeHit) {
+                        let o = volumeHit;
+                        if (!o) {
+                            let hitObj = hits[0].object;
+                            o = hitObj;
+                            while (o && o.parent && !o.userData.isEnemyRoot) o = o.parent;
                         }
                         
                         if (o && o.userData && o.userData.isEnemyRoot && !o.userData.dead) {
                             o.userData.hp -= 25;
                             triggerHitMarker();
-                            // Visual feedback on hit
                             o.traverse(child => {
                                 if (child.isMesh && child.material && child.material.emissive) {
                                     const oldColor = child.material.emissive.getHex();
@@ -2769,7 +2867,15 @@
                         }
                     }
                 }
-                if (!hit) { const wh = new THREE.Raycaster(pp, dir, 0, d).intersectObjects(walls); if (wh.length > 0 && (b.userData.life <= 298 || wh[0].distance > 0.5)) hit = true; }
+                
+                // Colisão com Paredes (Bloqueio de tiro)
+                if (!hit) { 
+                    const wh = bulletRaycaster.intersectObjects(walls); 
+                    if (wh.length > 0) {
+                        // Lógica original: se bater na parede, o tiro some
+                        hit = true;
+                    }
+                }
                 if (hit || b.userData.life <= 0) { scene.remove(b); bullets.splice(i, 1); }
             }
         }
@@ -2809,7 +2915,50 @@
                 if (d < 25 && d > 1.5) {
                     const dir = new THREE.Vector3().subVectors(target.position, e.position).normalize();
                     const np = e.position.clone().add(dir.clone().multiplyScalar(0.075));
-                    if (!checkWall(np.x, np.z)) e.position.copy(np); e.rotation.y = Math.atan2(dir.x, dir.z);
+                    
+                    // Bot rotation (facing target)
+                    const targetYaw = Math.atan2(dir.x, dir.z) + Math.PI;
+                    e.rotation.y = targetYaw;
+
+                    if (!checkWall(np.x, np.z)) {
+                        e.position.copy(np);
+                        // Leg animation
+                        e.userData.walkCycle += 0.2;
+                        const wc = e.userData.walkCycle;
+                        const legSwing = Math.sin(wc) * 0.5;
+                        const kneeFlex = Math.abs(Math.cos(wc)) * 0.4;
+                        if (e.userData.pivots) {
+                            e.userData.pivots.lLeg.rotation.x = legSwing;
+                            e.userData.pivots.lCanela.rotation.x = -kneeFlex;
+                            e.userData.pivots.rLeg.rotation.x = -legSwing;
+                            e.userData.pivots.rCanela.rotation.x = -Math.abs(Math.sin(wc)) * 0.4;
+                        }
+                    } else {
+                        // Reset legs when stopped
+                        if (e.userData.pivots) {
+                            e.userData.pivots.lLeg.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.lLeg.rotation.x, 0, 0.1);
+                            e.userData.pivots.lCanela.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.lCanela.rotation.x, 0, 0.1);
+                            e.userData.pivots.rLeg.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.rLeg.rotation.x, 0, 0.1);
+                            e.userData.pivots.rCanela.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.rCanela.rotation.x, 0, 0.1);
+                        }
+                    }
+
+                    // Aim arms at target (pointing forward and slightly at player)
+                    if (e.userData.pivots && e.userData.pivots.rArm) {
+                        // Calculate pitch to target
+                        const targetPitch = Math.atan2(target.position.y - (e.position.y + 1.5), d);
+                        
+                        // Fix: Se o bot estiver muito perto, não levanta o braço, mantém apontado para frente
+                        let finalPitch = targetPitch;
+                        if (d < 3.0) finalPitch = 0; // Se estiver a menos de 3 metros, aponta reto
+                        
+                        e.userData.pivots.rArm.rotation.x = (Math.PI / 2) - finalPitch;
+                        e.userData.pivots.lArm.rotation.x = (Math.PI / 2) - finalPitch;
+                        
+                        // Limit rotation to prevent weird poses
+                        e.userData.pivots.rArm.rotation.x = Math.max(1.0, Math.min(2.0, e.userData.pivots.rArm.rotation.x));
+                        e.userData.pivots.lArm.rotation.x = Math.max(1.0, Math.min(2.0, e.userData.pivots.lArm.rotation.x));
+                    }
 
                     if (isCoopMode && isMasterClient) {
                         // Sincronização de rede (throttle para não sobrecarregar o Firebase)
@@ -2825,34 +2974,51 @@
                     }
 
                     if (d < 15 && now - e.userData.lastShot > e.userData.reactionTime) {
-                        const sp = e.position.clone().add(new THREE.Vector3(0, 1.0, 0));
-                        if (new THREE.Raycaster(sp, dir, 0, sp.distanceTo(target.position)).intersectObjects(walls).length === 0) {
-                            e.userData.lastShot = now;
+                        // Posição de origem do tiro (olhos/arma do bot)
+                        // Usamos um ponto ligeiramente à frente do bot para evitar colisão com o próprio corpo
+                        const sp = e.position.clone().add(new THREE.Vector3(0, 1.5, 0));
+                        const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(e.quaternion);
+                        sp.add(forwardDir.multiplyScalar(0.5));
+                        
+                        // Verificação de Linha de Visão (Line of Sight)
+                        // Ajustamos o alvo para o centro do player (altura 1.0)
+                        const targetPos = target.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+                        const dist = sp.distanceTo(targetPos);
+                        const shootDir = new THREE.Vector3().subVectors(targetPos, sp).normalize();
+                        
+                        // Raycaster para checar se há paredes no caminho
+                        const losRay = new THREE.Raycaster(sp, shootDir, 0, dist);
+                        // Importante: checar apenas contra as paredes
+                        const hits = losRay.intersectObjects(walls, false);
 
-                            // Se o alvo for o jogador local (host), aplica dano diretamente
+                        if (hits.length === 0) {
+                            e.userData.lastShot = now;
+                            playSound('shoot');
+
+                            // Dano instantâneo (lógica original)
                             if (target === playerGroup) {
                                 playerHP -= 5;
                                 document.getElementById('hp').innerText = playerHP;
                                 if (myRef) update(myRef, { hp: playerHP });
                                 if (playerHP <= 0) { if (isCoopMode) respawnPvP(); else showGameOver(); }
-
                                 const o = document.getElementById('damage-overlay');
                                 o.style.boxShadow = "inset 0 0 50px 20px rgba(255,0,0,0.5)";
                                 setTimeout(() => o.style.boxShadow = "none", 200);
                             } else {
-                                // Se o alvo for um jogador remoto, envia o dano via Firebase
                                 const remoteId = target.userData.id;
                                 const remoteRef = ref(db, `${roomPath}/players/${remoteId}`);
-                                runTransaction(remoteRef, (p) => {
-                                    if (p) {
-                                        p.hp = (p.hp || 100) - 5;
-                                    }
-                                    return p;
-                                });
+                                runTransaction(remoteRef, (p) => { if (p) p.hp = (p.hp || 100) - 5; return p; });
                             }
 
-                            playSound('shoot');
-                            const t = new THREE.Line(new THREE.BufferGeometry().setFromPoints([sp, target.position.clone().add(new THREE.Vector3(0, 1, 0))]), new THREE.LineBasicMaterial({ color: 0xff0000 }));
+                            // Efeito visual do laser saindo da arma
+                            // Tentar pegar a posição real da arma para o efeito visual
+                            let visualOrigin = sp;
+                            const gun = e.getObjectByName("gun");
+                            if (gun) {
+                                visualOrigin = new THREE.Vector3();
+                                gun.getWorldPosition(visualOrigin);
+                            }
+                            const t = new THREE.Line(new THREE.BufferGeometry().setFromPoints([visualOrigin, targetPos]), new THREE.LineBasicMaterial({ color: 0xff0000 }));
                             scene.add(t);
                             setTimeout(() => scene.remove(t), 50);
                         }
@@ -2924,6 +3090,10 @@
                             r.pivots.lCanela.rotation.x = -kneeFlex;
                             r.pivots.rLeg.rotation.x = -legSwing;
                             r.pivots.rCanela.rotation.x = -Math.abs(Math.sin(wc)) * 0.4;
+                            
+                            // Remote player arms pointing forward
+                            if (r.pivots.rArm) r.pivots.rArm.rotation.x = Math.PI / 2;
+                            if (r.pivots.lArm) r.pivots.lArm.rotation.x = Math.PI / 2;
                         }
                     } else {
                         if (r.pivots) {
@@ -2931,6 +3101,10 @@
                             r.pivots.lCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.lCanela.rotation.x, 0, 0.1);
                             r.pivots.rLeg.rotation.x = THREE.MathUtils.lerp(r.pivots.rLeg.rotation.x, 0, 0.1);
                             r.pivots.rCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.rCanela.rotation.x, 0, 0.1);
+                            
+                            // Remote player arms pointing forward
+                            if (r.pivots.rArm) r.pivots.rArm.rotation.x = Math.PI / 2;
+                            if (r.pivots.lArm) r.pivots.lArm.rotation.x = Math.PI / 2;
                         }
                     }
                 });
