@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+server/node_modules/
+server/dist/
+
+# Env & Secrets
+.env
+.env.local
+.env.*.local
+
+# Agent/AI data
+.agent/
+brain/
+implementation_plan.md
+walkthrough.md
+task.md
+
+# OS files
+.DS_Store
+Thumbs.db

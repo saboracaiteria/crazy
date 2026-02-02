@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Canaan: Combat Zone</title>
     <link rel="icon" href="data:,">
+    <script src="https://unpkg.com/colyseus.js@^0.15.0/dist/colyseus.js"></script>
     <script>
         // === LAUNCHER & ANTI-BLOCKING SYSTEM ===
         window.CrazySDK = null;
@@ -1105,6 +1106,7 @@
         try { app = initializeApp(firebaseConfig); auth = getAuth(app); db = getDatabase(app); logSystem("Firebase Initialized.", "success"); } catch (e) { console.error(e); }
 
         let myUserId = null, myRef = null, remotePlayers = {}, isMultiplayerMode = false, isCoopMode = false, networkInterval = null;
+        let colyseusClient = null, colyseusRoom = null;
         let lastActivityTime = Date.now(); // Monitoramento de inatividade
         let isThirdPerson = true, isAiming = false, isManualFiring = false, moveInput = { x: 0, y: 0 }, keyState = { w: false, a: false, s: false, d: false }, pitch = 0, yaw = 0, velocityY = 0, isGrounded = true, recoil = 0, gunRecoilZ = 0, lastShotTime = 0, lastStepTime = 0, minimapCanvas, minimapCtx;
 
@@ -1142,7 +1144,7 @@
         let unsubLobbyPlayers = null, unsubGamePlayers = null, unsubMyPresence = null;
         let unsubCoopLevel = null, unsubCoopKills = null, unsubCoopEnemies = null, unsubCoopKits = null;
 
-        let lastSentPosition = new THREE.Vector3(0, 0, 0), lastSentRotation = 0, lastSentTime = 0;
+        let lastSentPosition = new THREE.Vector3(0, 0, 0), lastSentRotation = 0, lastSentTime = 0, lastColyseusSentTime = 0;
         let audioCtx;
 
         // --- SISTEMA DE MÚSICA ALEATÓRIA ---
@@ -1373,6 +1375,7 @@
             showCrazyInviteButton(roomPath);
 
             connectLobby();
+            connectColyseus();
         }
 
         async function connectLobby() {
@@ -1410,6 +1413,45 @@
                     unsubAuth();
                 } else { logSystem("Logged Out.", "error"); }
             });
+        }
+
+        async function connectColyseus() {
+            const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+            // Para local: "localhost:2567", Para Render: "sua-url.onrender.com"
+            const host = window.location.hostname === "localhost" ? "localhost:2567" : window.location.host;
+
+            logSystem("Connecting to Colyseus...", "info");
+            colyseusClient = new Colyseus.Client(`${protocol}://${host}`);
+
+            try {
+                colyseusRoom = await colyseusClient.joinOrCreate("battle_room");
+                logSystem("Colyseus Connected!", "success");
+
+                // Escutar novos jogadores (Schema)
+                colyseusRoom.state.players.onAdd((player, sessionId) => {
+                    if (sessionId === colyseusRoom.sessionId) return;
+                    console.log("New remote player:", sessionId);
+                    createRemotePlayer(sessionId, player);
+
+                    // Escutar mudanças de posição do player específico
+                    player.onChange(() => {
+                        updateRemotePlayerFromColyseus(sessionId, player);
+                    });
+                });
+
+                colyseusRoom.state.players.onRemove((player, sessionId) => {
+                    removeRemotePlayer(sessionId);
+                });
+
+                // Escutar eventos de tiro
+                colyseusRoom.onMessage("onShoot", (data) => {
+                    handleRemoteShoot(data);
+                });
+
+            } catch (err) {
+                console.error("Colyseus error:", err);
+                logSystem("Colyseus Connection Failed", "error");
+            }
         }
 
         function renderLobbyList(data) {
@@ -2423,36 +2465,55 @@
             return g;
         }
 
-        function updateRemotePlayer(id, d) {
+        function getRemotePlayer(id, d) {
             if (!remotePlayers[id]) {
                 const m = createRemotePlayerMesh();
                 m.position.set(d.x, d.y, d.z);
                 m.userData = { id: id, isPlayer: true, walkCycle: 0 };
-                m.children.forEach(c => c.userData = { id: id, isPlayer: true });
                 scene.add(m);
-
-                // Cache leg pivots for animation
-                const rLeg = m.getObjectByName("rLegPivot");
-                const lLeg = m.getObjectByName("lLegPivot");
-                const rCanela = m.getObjectByName("rCanelaPivot");
-                const lCanela = m.getObjectByName("lCanelaPivot");
 
                 remotePlayers[id] = {
                     mesh: m,
                     targetPos: new THREE.Vector3(d.x, d.y, d.z),
-                    targetRot: d.rot,
+                    targetRot: d.rot || 0,
                     pivots: {
-                        rLeg, lLeg, rCanela, lCanela,
+                        rLeg: m.getObjectByName("rLegPivot"),
+                        lLeg: m.getObjectByName("lLegPivot"),
+                        rCanela: m.getObjectByName("rCanelaPivot"),
+                        lCanela: m.getObjectByName("lCanelaPivot"),
                         rArm: m.getObjectByName("rArmPivot"),
                         lArm: m.getObjectByName("lArmPivot")
                     }
                 };
             }
-            else {
-                const r = remotePlayers[id];
-                r.targetPos.set(d.x, d.y, d.z);
-                r.targetRot = d.rot;
-                r.mesh.userData.id = id;
+            return remotePlayers[id];
+        }
+
+        function updateRemotePlayer(id, d) {
+            const r = getRemotePlayer(id, d);
+            r.targetPos.set(d.x, d.y, d.z);
+            r.targetRot = d.rot;
+        }
+
+        function updateRemotePlayerFromColyseus(sessionId, playerState) {
+            updateRemotePlayer(sessionId, playerState);
+            const r = remotePlayers[sessionId];
+            if (r && playerState.hp !== undefined) {
+                r.hp = playerState.hp;
+                if (r.hp <= 0 && !r.isDead) {
+                    r.isDead = true;
+                    r.mesh.visible = false; // Hide dead player
+                } else if (r.hp > 0 && r.isDead) {
+                    r.isDead = false;
+                    r.mesh.visible = true;
+                }
+            }
+        }
+
+        function removeRemotePlayer(id) {
+            if (remotePlayers[id]) {
+                scene.remove(remotePlayers[id].mesh);
+                delete remotePlayers[id];
             }
         }
 
@@ -2822,33 +2883,44 @@
 
         }
         function checkWall(x, z) { for (let w of walls) if (Math.abs(x - w.position.x) < 2.8 && Math.abs(z - w.position.z) < 2.8) return true; return false; }
-        function spawnBullet() {
-            const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 4, 4), new THREE.MeshBasicMaterial({ color: 0x00FF41 }));
-            const p = new THREE.Vector3(), d = new THREE.Vector3();
+        function handleRemoteShoot(data) {
+            const pos = new THREE.Vector3(data.x, data.y, data.z);
+            const dir = new THREE.Vector3(data.dir.x, data.dir.y, data.dir.z);
+            spawnBullet(pos, dir, true);
+        }
 
-            // Obter posição da arma do player
-            if (gunGroup) {
-                gunGroup.getWorldPosition(p);
-                // Ajustar para a ponta do cano
-                const gunDir = new THREE.Vector3(0, 0, -0.6);
-                gunDir.applyQuaternion(gunGroup.getWorldQuaternion(new THREE.Quaternion()));
-                p.add(gunDir);
-            } else {
-                // Fallback para câmera se gunGroup não existir
-                camera.getWorldPosition(p);
+        function spawnBullet(pos, dir, isRemote = false) {
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 4, 4), new THREE.MeshBasicMaterial({ color: isRemote ? 0xff0000 : 0x00FF41 }));
+            const p = pos ? pos.clone() : new THREE.Vector3();
+            const d = dir ? dir.clone() : new THREE.Vector3();
+
+            if (!pos) {
+                if (gunGroup) {
+                    gunGroup.getWorldPosition(p);
+                    const gunDir = new THREE.Vector3(0, 0, -0.6);
+                    gunDir.applyQuaternion(gunGroup.getWorldQuaternion(new THREE.Quaternion()));
+                    p.add(gunDir);
+                } else {
+                    camera.getWorldPosition(p);
+                }
             }
 
-            // Direção sempre vem da câmera (mira)
-            camera.getWorldDirection(d);
+            if (!dir) {
+                camera.getWorldDirection(d);
+            }
 
-            // CORREÇÃO À QUEIMA-ROUPA: 
-            // Se o bot estiver muito perto, o tiro pode "nascer" atrás dele.
-            // Vamos recuar a posição inicial do Raycast para garantir que pegue objetos colados.
+            if (colyseusRoom && !isRemote) {
+                colyseusRoom.send("shoot", {
+                    x: parseFloat(p.x.toFixed(2)),
+                    y: parseFloat(p.y.toFixed(2)),
+                    z: parseFloat(p.z.toFixed(2)),
+                    dir: { x: parseFloat(d.x.toFixed(3)), y: parseFloat(d.y.toFixed(3)), z: parseFloat(d.z.toFixed(3)) }
+                });
+            }
+
             const backPos = p.clone().sub(d.clone().multiplyScalar(1.0));
-
             b.position.copy(p);
-            // lastPos agora começa um pouco atrás para detectar colisões imediatas
-            b.userData = { velocity: d.multiplyScalar(5.0), life: 300, lastPos: backPos };
+            b.userData = { velocity: d.multiplyScalar(5.0), life: 300, lastPos: backPos, isRemote: isRemote };
             scene.add(b);
             bullets.push(b);
         }
@@ -2885,6 +2957,7 @@
                         if (o.userData && o.userData.id) {
                             hit = true; triggerHitMarker();
                             const targetId = o.userData.id;
+                            if (colyseusRoom) colyseusRoom.send("hit", { targetId: targetId });
                             runTransaction(ref(db, `${roomPath}/players/${targetId}`), (t) => {
                                 if (t && t.hp > 0) { t.hp -= 10; if (t.hp <= 0) { t.hp = 0; registerKill(); } }
                                 return t;
@@ -3288,6 +3361,20 @@
                 if (!checkWall(playerGroup.position.x, playerGroup.position.z + mz)) playerGroup.position.z += mz;
                 if (!isGrounded) velocityY -= GRAVITY; playerGroup.position.y += velocityY;
                 if (playerGroup.position.y <= 0) { playerGroup.position.y = 0; velocityY = 0; isGrounded = true; }
+
+                // COLYSEUS UPDATE
+                const now = performance.now();
+                if (colyseusRoom && isPlaying && (now - lastColyseusSentTime > 50)) {
+                    colyseusRoom.send("move", {
+                        x: parseFloat(playerGroup.position.x.toFixed(2)),
+                        y: parseFloat(playerGroup.position.y.toFixed(2)),
+                        z: parseFloat(playerGroup.position.z.toFixed(2)),
+                        rot: parseFloat(yaw.toFixed(2)),
+                        anim: "Idle"
+                    });
+                    lastColyseusSentTime = now;
+                }
+
                 if (isMultiplayerMode) Object.values(remotePlayers).forEach(r => { r.mesh.position.lerp(r.targetPos, 0.2); let rd = r.targetRot - r.mesh.rotation.y; while (rd > Math.PI) rd -= Math.PI * 2; while (rd < -Math.PI) rd += Math.PI * 2; r.mesh.rotation.y += rd * 0.2; });
                 processShooting(); updateEnemies(); updateHealthKits(); drawMinimap(); updateBullets(); updateHtmlObjects();
             } else if (!gamePaused) { const t = Date.now() * 0.0006; camera.position.set(Math.cos(t) * 40 + 45, 30, Math.sin(t) * 40 + 45); camera.lookAt(45, 0, 45); }
