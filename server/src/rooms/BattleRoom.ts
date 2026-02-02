@@ -41,9 +41,12 @@ export class BattleRoom extends Room {
     }
 
     onJoin(client: Client, options: any) {
-        console.log(client.sessionId, "joined!");
+        const uid = options.uid || client.sessionId;
+        console.log(client.sessionId, "joined with uid:", uid);
+        client.userData = { uid: uid };
+
         const player = new Player();
-        player.id = client.sessionId;
+        player.id = uid;
         this.state.players.set(client.sessionId, player);
     }
 

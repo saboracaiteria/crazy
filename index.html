@@ -1466,23 +1466,27 @@
             colyseusClient = new Colyseus.Client(`${protocol}://${host}`);
 
             try {
-                colyseusRoom = await colyseusClient.joinOrCreate("battle_room");
+                colyseusRoom = await colyseusClient.joinOrCreate("battle_room", { uid: myUserId });
                 logSystem("Colyseus Connected!", "success");
 
                 // Escutar novos jogadores (Schema)
                 colyseusRoom.state.players.onAdd((player, sessionId) => {
                     if (sessionId === colyseusRoom.sessionId) return;
-                    console.log("New remote player:", sessionId);
-                    getRemotePlayer(sessionId, player);
+
+                    // Usamos player.id (UID do Firebase) como chave principal para evitar duplicatas
+                    const uid = player.id || sessionId;
+                    console.log("New remote player (Colyseus):", uid);
+                    getRemotePlayer(uid, player);
 
                     // Escutar mudanças de posição do player específico
                     player.onChange(() => {
-                        updateRemotePlayerFromColyseus(sessionId, player);
+                        updateRemotePlayerFromColyseus(uid, player);
                     });
                 });
 
                 colyseusRoom.state.players.onRemove((player, sessionId) => {
-                    removeRemotePlayer(sessionId);
+                    const uid = player.id || sessionId;
+                    removeRemotePlayer(uid);
                 });
 
                 // Escutar eventos de tiro
@@ -2153,7 +2157,9 @@
                             endPVPMatch(false);
                         }
 
-                        active.add(k); c++; updateRemotePlayer(k, d[k]);
+                        active.add(k); c++;
+                        // Firebase position updates disabled - using Colyseus for real-time movement
+                        // updateRemotePlayer(k, d[k], "firebase"); 
                     }
                 });
                 document.getElementById('mp-count').innerText = c;
@@ -2245,6 +2251,8 @@
                     if (!localEnemy && !eData.dead) {
                         localEnemy = createEnemyMesh(eData.x, eData.z, currentLevel, key);
                         enemies.push(localEnemy);
+                        scene.add(localEnemy);
+                        console.log("Coop Enemy Spawned:", key);
                     }
 
                     if (localEnemy) {
@@ -2443,6 +2451,7 @@
             const g = new THREE.Group();
             const matBlack = new THREE.MeshStandardMaterial({ color: 0x222222 });
             const matCamo = new THREE.MeshStandardMaterial({
+                color: isCoopMode ? 0x4b5320 : 0x550000,
                 map: createProTexture('camo', isCoopMode ? '#4b5320' : '#550000'),
                 roughness: 0.9
             });
@@ -2532,6 +2541,8 @@
                     mesh: m,
                     targetPos: new THREE.Vector3(d.x, d.y, d.z),
                     targetRot: d.rot || 0,
+                    hp: d.hp !== undefined ? d.hp : 100,
+                    isDead: false,
                     pivots: {
                         rLeg: m.getObjectByName("rLegPivot"),
                         lLeg: m.getObjectByName("lLegPivot"),
@@ -2545,23 +2556,34 @@
             return remotePlayers[id];
         }
 
-        function updateRemotePlayer(id, d) {
+        function updateRemotePlayer(id, d, source = "firebase") {
+            // Se o Colyseus estiver ativo, ignoramos atualizações de posição do Firebase
+            // para evitar conflitos e flickering (já que o Colyseus é mais rápido)
+            if (colyseusRoom && source === "firebase") return;
+
             const r = getRemotePlayer(id, d);
             r.targetPos.set(d.x, d.y, d.z);
             r.targetRot = d.rot;
         }
 
         function updateRemotePlayerFromColyseus(sessionId, playerState) {
-            updateRemotePlayer(sessionId, playerState);
+            updateRemotePlayer(sessionId, playerState, "colyseus");
             const r = remotePlayers[sessionId];
-            if (r && playerState.hp !== undefined) {
-                r.hp = playerState.hp;
-                if (r.hp <= 0 && !r.isDead) {
-                    r.isDead = true;
-                    r.mesh.visible = false; // Hide dead player
-                } else if (r.hp > 0 && r.isDead) {
-                    r.isDead = false;
-                    r.mesh.visible = true;
+            if (r) {
+                const currentHP = playerState.hp !== undefined ? playerState.hp : 100;
+                r.hp = currentHP;
+                if (currentHP <= 0) {
+                    if (!r.isDead) {
+                        r.isDead = true;
+                        r.mesh.visible = false;
+                        console.log("Remote player died:", sessionId);
+                    }
+                } else {
+                    if (r.isDead || r.mesh.visible === false) {
+                        r.isDead = false;
+                        r.mesh.visible = true;
+                        console.log("Remote player respawned/visible:", sessionId);
+                    }
                 }
             }
         }
@@ -2651,12 +2673,13 @@
                     } else setupPresence();
                 }
 
-                // Spawn enemies if not in pure PVP mode
-                if (!isMultiplayerMode || isCoopMode) {
+                // Spawn enemies if not in multiplayer mode
+                // In Coop, the Host-only sync listener will handle spawning
+                if (!isMultiplayerMode) {
                     const botCount = 15 + (currentLevel - 1) * 2;
                     spawnEnemies(botCount, currentLevel);
                 } else {
-                    console.log("Multiplayer mode: Waiting for real players...");
+                    console.log("Multiplayer/Coop mode: Waiting for sync...");
                 }
                 const kitCount = currentLevel <= 2 ? 6 : 8;
                 spawnHealthKits(kitCount);
