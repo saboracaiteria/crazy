@@ -1374,9 +1374,14 @@
                     logSystem("ID: " + myUserId.substring(0, 6), "success");
                     document.getElementById("start-mp-btn").disabled = false;
 
-                    // Registrar presença no lobby
+                    // Registrar presença no lobby com joinTimestamp para HOST estável
                     const lobbyRef = ref(db, `${roomPath}/players/${myUserId}`);
-                    set(lobbyRef, { id: myUserId, lastUpdate: serverTimestamp(), inLobby: true });
+                    set(lobbyRef, {
+                        id: myUserId,
+                        lastUpdate: serverTimestamp(),
+                        joinTimestamp: serverTimestamp(),
+                        inLobby: true
+                    });
                     onDisconnect(lobbyRef).remove();
 
                     if (unsubLobbyPlayers) unsubLobbyPlayers();
@@ -1399,14 +1404,16 @@
         function renderLobbyList(data) {
             const listEl = document.getElementById("lobby-player-list"); listEl.innerHTML = "";
             if (!data) { listEl.innerHTML = '<div style="padding:10px; text-align:center; color: #ff00ff; font-weight: bold; animation: pulseAlert 2s infinite;">AGUARDANDO OPONENTE...</div>'; return; }
-            const allIds = Object.keys(data).sort();
+
+            // Ordenar por joinTimestamp para garantir que o Host seja estável (o primeiro que entrou)
+            const allIds = Object.keys(data).sort((a, b) => (data[a].joinTimestamp || 0) - (data[b].joinTimestamp || 0));
             isMasterClient = (allIds[0] === myUserId);
             const now = Date.now(); let count = 0;
             allIds.forEach(key => {
                 const p = data[key];
                 if (p.lastUpdate && (now - p.lastUpdate < 10000)) {
                     count++; const div = document.createElement("div"); div.className = "lobby-player-item"; if (key === myUserId) div.classList.add("me");
-                    let roleTag = (key === allIds[0] && isCoopMode) ? '<span style="color:gold; font-size:10px;"> [HOST]</span>' : '';
+                    let roleTag = (key === allIds[0]) ? '<span style="color:gold; font-size:10px;"> [HOST]</span>' : '';
                     div.innerHTML = `<span>${key === myUserId ? "VOCÊ" : `Op. ${key.substring(0, 4)}`}${roleTag}</span> <span>ONLINE</span>`; listEl.appendChild(div);
                 }
             });
@@ -2015,16 +2022,17 @@
                 const now = Date.now(), active = new Set(); let c = 0;
 
                 // Filtra apenas jogadores ativos nos últimos 10 segundos
-                const activeIds = Object.keys(d).filter(k => (d[k].lastUpdate || 0) > (now - 10000)).sort();
+                // Ordenar por joinTimestamp para migração de Host estável
+                const activeIds = Object.keys(d).filter(k => (d[k].lastUpdate || 0) > (now - 10000))
+                    .sort((a, b) => (d[a].joinTimestamp || 0) - (d[b].joinTimestamp || 0));
 
-                // Migração de Host: O primeiro jogador ativo da lista ordenada assume
+                // Migração de Host: O jogador mais antigo assume
                 const newMasterStatus = (activeIds[0] === myUserId);
                 if (isCoopMode && newMasterStatus !== isMasterClient) {
                     isMasterClient = newMasterStatus;
                     document.getElementById('master-status').style.display = isMasterClient ? 'block' : 'none';
                     if (isMasterClient) {
                         logSystem("Você é o novo HOST (Sincronizando...)", "success");
-                        // Ao assumir, o novo host garante que o estado atual seja mantido
                         update(ref(db, `${roomPath}/state`), { lastHostMigration: serverTimestamp() });
                     }
                 }
@@ -2086,7 +2094,7 @@
                 const l = state.level || 1;
                 const k = state.kills || 0;
 
-                if (l !== currentLevel || (isMasterClient && !enemies.length)) {
+                if (l !== currentLevel) {
                     currentLevel = l;
                     score = k;
                     document.getElementById('score').innerText = score;
