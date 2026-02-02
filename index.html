@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Canaan: Combat Zone</title>
+    <link rel="icon" href="data:,">
     <script>
         // === LAUNCHER & ANTI-BLOCKING SYSTEM ===
         window.CrazySDK = null;
@@ -1154,7 +1155,15 @@
         // --- CRAZYGAMES SDK V2 (usa inicialização do <head>) ---
         // O SDK é inicializado sincronamente no <head> e fica disponível em window.CrazySDK
         function getCrazySDK() {
-            return window.CrazySDK || null;
+            const sdk = window.CrazyGames && window.CrazyGames.SDK;
+            if (sdk && sdk.environment === "disabled") {
+                if (!window.sdkDisabledLogged) {
+                    console.warn("CrazySDK is disabled on this domain. SDK features will be skipped.");
+                    window.sdkDisabledLogged = true;
+                }
+                return null;
+            }
+            return sdk || null;
         }
 
         // Notifica que o jogo terminou de carregar
@@ -1191,8 +1200,9 @@
         // --- CRAZYGAMES INVITE BUTTON (ASYNC - retornam Promises) ---
         async function showCrazyInviteButton(roomId) {
             try {
-                if (window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.game) {
-                    const link = await window.CrazyGames.SDK.game.showInviteButton({
+                const sdk = getCrazySDK();
+                if (sdk && sdk.game) {
+                    const link = await sdk.game.showInviteButton({
                         roomId: roomId || 'default-room'
                     });
                     console.log("📍 showInviteButton() OK - Link:", link);
@@ -1218,8 +1228,9 @@
         // Gera link de convite usando o SDK (ASYNC - retorna Promise)
         async function getInviteLink(roomId) {
             try {
-                if (window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.game) {
-                    const link = await window.CrazyGames.SDK.game.inviteLink({
+                const sdk = getCrazySDK();
+                if (sdk && sdk.game) {
+                    const link = await sdk.game.inviteLink({
                         roomId: roomId || 'default-room'
                     });
                     console.log("📍 inviteLink() generated:", link);
@@ -1482,7 +1493,7 @@
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
             const color = new THREE.Color(colorHex);
 
             // Base Fill
@@ -3084,7 +3095,7 @@
             });
         }
 
-        function setupMinimap() { minimapCanvas = document.createElement('canvas'); minimapCanvas.id = 'minimap-canvas'; minimapCanvas.width = 100; minimapCanvas.height = 100; minimapCanvas.className = 'minimap-container'; minimapCanvas.style.cssText = "position:absolute; top:75px; left:15px; background:rgba(0,0,0,0.8); pointer-events:none; z-index:50;"; document.body.appendChild(minimapCanvas); minimapCtx = minimapCanvas.getContext('2d'); }
+        function setupMinimap() { minimapCanvas = document.createElement('canvas'); minimapCanvas.id = 'minimap-canvas'; minimapCanvas.width = 100; minimapCanvas.height = 100; minimapCanvas.className = 'minimap-container'; minimapCanvas.style.cssText = "position:absolute; top:75px; left:15px; background:rgba(0,0,0,0.8); pointer-events:none; z-index:50;"; document.body.appendChild(minimapCanvas); minimapCtx = minimapCanvas.getContext('2d', { willReadFrequently: true }); }
         function drawMinimap() {
             minimapCtx.clearRect(0, 0, 100, 100); const s = 100 / (mazeSize * cellSize); minimapCtx.fillStyle = '#111'; minimapCtx.fillRect(0, 0, 100, 100); minimapCtx.fillStyle = '#555';
             for (let i = 0; i < mazeSize; i++) for (let j = 0; j < mazeSize; j++) if (mazeMap[i][j] === 1) minimapCtx.fillRect(j * cellSize * s, i * cellSize * s, cellSize * s, cellSize * s);
@@ -3130,6 +3141,7 @@
                 // UPDATE REMOTE PLAYERS ANIMATION AND LERP
                 Object.values(remotePlayers).forEach(r => {
                     const m = r.mesh;
+                    if (!m) return;
                     const prevPos = m.position.clone();
                     m.position.lerp(r.targetPos, 0.15);
                     m.rotation.y = THREE.MathUtils.lerp(m.rotation.y, r.targetRot, 0.15);
@@ -3143,10 +3155,10 @@
                         const kneeFlex = Math.abs(Math.cos(wc)) * 0.4;
 
                         if (r.pivots) {
-                            r.pivots.lLeg.rotation.x = legSwing;
-                            r.pivots.lCanela.rotation.x = -kneeFlex;
-                            r.pivots.rLeg.rotation.x = -legSwing;
-                            r.pivots.rCanela.rotation.x = -Math.abs(Math.sin(wc)) * 0.4;
+                            if (r.pivots.lLeg) r.pivots.lLeg.rotation.x = legSwing;
+                            if (r.pivots.lCanela) r.pivots.lCanela.rotation.x = -kneeFlex;
+                            if (r.pivots.rLeg) r.pivots.rLeg.rotation.x = -legSwing;
+                            if (r.pivots.rCanela) r.pivots.rCanela.rotation.x = -Math.abs(Math.sin(wc)) * 0.4;
 
                             // Remote player arms pointing forward
                             if (r.pivots.rArm) r.pivots.rArm.rotation.x = Math.PI / 2;
@@ -3154,10 +3166,10 @@
                         }
                     } else {
                         if (r.pivots) {
-                            r.pivots.lLeg.rotation.x = THREE.MathUtils.lerp(r.pivots.lLeg.rotation.x, 0, 0.1);
-                            r.pivots.lCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.lCanela.rotation.x, 0, 0.1);
-                            r.pivots.rLeg.rotation.x = THREE.MathUtils.lerp(r.pivots.rLeg.rotation.x, 0, 0.1);
-                            r.pivots.rCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.rCanela.rotation.x, 0, 0.1);
+                            if (r.pivots.lLeg) r.pivots.lLeg.rotation.x = THREE.MathUtils.lerp(r.pivots.lLeg.rotation.x, 0, 0.1);
+                            if (r.pivots.lCanela) r.pivots.lCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.lCanela.rotation.x, 0, 0.1);
+                            if (r.pivots.rLeg) r.pivots.rLeg.rotation.x = THREE.MathUtils.lerp(r.pivots.rLeg.rotation.x, 0, 0.1);
+                            if (r.pivots.rCanela) r.pivots.rCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.rCanela.rotation.x, 0, 0.1);
 
                             // Remote player arms pointing forward
                             if (r.pivots.rArm) r.pivots.rArm.rotation.x = Math.PI / 2;
