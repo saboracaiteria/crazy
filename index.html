@@ -1432,7 +1432,7 @@
                 colyseusRoom.state.players.onAdd((player, sessionId) => {
                     if (sessionId === colyseusRoom.sessionId) return;
                     console.log("New remote player:", sessionId);
-                    createRemotePlayer(sessionId, player);
+                    getRemotePlayer(sessionId, player);
 
                     // Escutar mudanças de posição do player específico
                     player.onChange(() => {
