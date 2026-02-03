@@ -2221,6 +2221,14 @@
                     const ids = Object.keys(d).sort();
                     isMasterClient = (ids[0] === myUserId);
                     document.getElementById('master-status').style.display = isMasterClient ? 'block' : 'none';
+
+                    // Trigger spawn immediately if we are the host and it's the start of the session
+                    // This fixes the race condition where resetGame called spawnEnemies before we knew we were Master
+                    if (isMasterClient && enemies.length === 0) {
+                        console.log("Master Client confirmed. Spawning initial enemies for Coop Level", currentLevel);
+                        const botCount = 15 + (currentLevel - 1) * 2;
+                        spawnEnemies(botCount, currentLevel);
+                    }
                 }
             }, { onlyOnce: true });
 
@@ -2714,15 +2722,14 @@
                 // 2. Coop: Only Host spawns (syncs to others)
                 // 3. PvP: NEVER spawn bots
                 if (!isMultiplayerMode) {
-                    // Single Player
+                    // Single Player: Always spawn immediately
                     const botCount = 15 + (currentLevel - 1) * 2;
                     spawnEnemies(botCount, currentLevel);
-                } else if (isCoopMode && isMasterClient) {
-                    // Coop Host
-                    const botCount = 15 + (currentLevel - 1) * 2;
-                    spawnEnemies(botCount, currentLevel);
+                } else if (isCoopMode) {
+                    // Coop: Wait for setupCoopPresence to confirm Master Client status
+                    console.log("Coop Mode: Waiting for Master Client confirmation to spawn enemies...");
                 } else {
-                    console.log("Multiplayer/Coop mode: Waiting for sync...");
+                    console.log("PvP Mode: No bots.");
                 }
 
                 const kitCount = currentLevel <= 2 ? 6 : 8;
