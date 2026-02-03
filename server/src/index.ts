@@ -14,6 +14,8 @@ const gameServer = new Server();
 
 // Registrar salas
 gameServer.define("battle_room", BattleRoom);
+gameServer.define("pvp", BattleRoom);
+gameServer.define("coop", BattleRoom);
 
 // Monitoramento
 app.use("/colyseus", monitor());

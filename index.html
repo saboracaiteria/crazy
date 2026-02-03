@@ -1406,7 +1406,10 @@
                 btn.classList.remove("pulse-btn");
 
                 showCrazyInviteButton(roomPath);
-                await connectLobby();
+
+                // Determine room name based on mode for strict separation
+                const roomName = (mode === 'coop') ? "coop" : "pvp";
+                await connectLobby(roomName);
             } catch (e) {
                 console.error("Lobby error:", e);
                 alert("Erro ao entrar no Lobby: " + e.message);
@@ -1415,7 +1418,7 @@
             }
         }
 
-        async function connectLobby() {
+        async function connectLobby(roomName = "pvp") {
             document.getElementById("connection-status").innerText = "Authenticating...";
             try {
                 await signInAnonymously(auth);
@@ -1462,25 +1465,25 @@
                     });
 
                     // Agora que temos o UID, conectamos ao Colyseus
-                    connectColyseus(myUserId);
+                    connectColyseus(myUserId, roomName);
                     unsubAuth();
                 }
             });
         }
 
-        async function connectColyseus(uid) {
+        async function connectColyseus(uid, roomName = "pvp") {
             if (isConnectingColyseus || colyseusRoom) return;
             isConnectingColyseus = true;
 
             const protocol = window.location.protocol === "https:" ? "wss" : "ws";
             const host = window.location.hostname === "localhost" ? "localhost:2567" : COLYSEUS_PROD_URL;
 
-            logSystem("Connecting to Colyseus...", "info");
+            logSystem(`Connecting to Colyseus [${roomName}]...`, "info");
             colyseusClient = new Colyseus.Client(`${protocol}://${host}`);
 
             try {
-                colyseusRoom = await colyseusClient.joinOrCreate("battle_room", { uid: uid });
-                logSystem("Colyseus Connected!", "success");
+                colyseusRoom = await colyseusClient.joinOrCreate(roomName, { uid: uid });
+                logSystem(`Connected to ${roomName.toUpperCase()}!`, "success");
                 isConnectingColyseus = false;
 
                 // Escutar novos jogadores (Schema)
@@ -1511,7 +1514,10 @@
             } catch (err) {
                 isConnectingColyseus = false;
                 console.error("Colyseus error:", err);
-                logSystem("Colyseus Connection Failed", "error");
+                logSystem("Connection Failed: " + (err.message || err), "error");
+                alert("Erro de Conexão: " + (err.message || "Tente novamente"));
+                document.getElementById("main-menu").style.display = "block";
+                document.getElementById("lobby-screen").style.display = "none";
             }
         }
 
