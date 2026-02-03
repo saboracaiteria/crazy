@@ -1369,42 +1369,44 @@
 
         async function showLobby(mode) {
             try {
-                cleanupMultiplayer();
+                await cleanupMultiplayer();
                 lobbyJoinTime = Date.now();
                 document.getElementById("start-view").style.display = "none";
                 document.getElementById('main-menu').style.display = 'none';
                 document.getElementById('lobby-screen').style.display = 'block';
-                ['multi-title', 'coop-title'].forEach(id => document.getElementById(id).style.display = 'none');
+
+                const lobbyTitle = document.getElementById('lobby-title');
+                const btn = document.getElementById("start-mp-btn");
 
                 if (mode === 'multi') {
-                    document.getElementById('multi-title').style.display = 'block';
+                    lobbyTitle.innerText = "ONLINE PVP";
+                    lobbyTitle.style.color = "#00f3ff";
+                    btn.style.borderColor = "#00f3ff";
+                    btn.style.color = "#00f3ff";
                     roomPath = 'rooms/pvp';
                     isCoopMode = false;
-                }
-                else {
-                    document.getElementById('coop-title').style.display = 'block';
+                } else {
+                    lobbyTitle.innerText = "CO-OP PVE";
+                    lobbyTitle.style.color = "#FF00FF";
+                    btn.style.borderColor = "#FF00FF";
+                    btn.style.color = "#FF00FF";
                     roomPath = 'rooms/coop';
                     isCoopMode = true;
                 }
 
-                const btn = document.getElementById("start-mp-btn");
                 btn.onclick = () => {
                     hideCrazyInviteButton();
                     if (isMasterClient) {
                         update(ref(db, `${roomPath}/state`), { startTrigger: serverTimestamp() });
                     }
-                    resetGame(mode); // Agora resetGame recebe o modo corretamente
+                    resetGame(mode);
                 };
                 btn.innerText = "START";
                 btn.disabled = true;
                 btn.classList.remove("pulse-btn");
-                btn.style.borderColor = ""; btn.style.color = "";
 
-                // CRAZYGAMES: Mostrar botão de convite nativo
                 showCrazyInviteButton(roomPath);
-
                 await connectLobby();
-                // O connectColyseus agora é chamado dentro de connectLobby após termos o UID
             } catch (e) {
                 console.error("Lobby error:", e);
                 alert("Erro ao entrar no Lobby: " + e.message);
