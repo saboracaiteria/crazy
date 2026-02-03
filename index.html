@@ -1126,7 +1126,7 @@
         try { app = initializeApp(firebaseConfig); auth = getAuth(app); db = getDatabase(app); logSystem("Firebase Initialized.", "success"); } catch (e) { console.error(e); }
 
         let myUserId = null, myRef = null, remotePlayers = {}, isMultiplayerMode = false, isCoopMode = false, networkInterval = null;
-        let colyseusClient = null, colyseusRoom = null;
+        let colyseusClient = null, colyseusRoom = null, isConnectingColyseus = false;
         let lobbyJoinTime = 0;
         // Substitua pela sua URL da Render após o deploy
         const COLYSEUS_PROD_URL = "crazyy-n878.onrender.com";
@@ -1367,34 +1367,34 @@
         function logSystem(msg, type = "normal") { const el = document.getElementById("connection-log"); if (!el) return; const line = document.createElement("div"); line.innerText = `> ${msg}`; if (type === "error") line.className = "log-error"; if (type === "success") line.className = "log-success"; el.appendChild(line); el.scrollTop = el.scrollHeight; }
         function mulberry32(a) { return function () { var t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; } }
 
-        function showLobby(mode) {
+        async function showLobby(mode) {
             try {
                 cleanupMultiplayer();
                 lobbyJoinTime = Date.now();
                 document.getElementById("start-view").style.display = "none";
-                document.getElementById("lobby-screen").style.display = "flex";
-                const title = document.getElementById("lobby-title"), btn = document.getElementById("start-mp-btn");
-                if (mode === 'coop') {
-                    roomPath = 'rooms/coop'; isCoopMode = true;
-                    title.innerText = "CO-OP PVE"; title.style.color = "#FF00FF"; btn.style.borderColor = "#FF00FF"; btn.style.color = "#FF00FF";
-                    btn.onclick = () => {
-                        hideCrazyInviteButton();
-                        if (isMasterClient) {
-                            update(ref(db, `${roomPath}/state`), { startTrigger: serverTimestamp() });
-                        }
-                        resetGame('coop');
-                    };
-                } else {
-                    roomPath = 'rooms/pvp'; isCoopMode = false;
-                    title.innerText = "ONLINE PVP"; title.style.color = "#00f3ff"; btn.style.borderColor = "#00f3ff"; btn.style.color = "#00f3ff";
-                    btn.onclick = () => {
-                        hideCrazyInviteButton();
-                        if (isMasterClient) {
-                            update(ref(db, `${roomPath}/state`), { startTrigger: serverTimestamp() });
-                        }
-                        resetGame('multi');
-                    };
+                document.getElementById('main-menu').style.display = 'none';
+                document.getElementById('lobby-screen').style.display = 'block';
+                ['multi-title', 'coop-title'].forEach(id => document.getElementById(id).style.display = 'none');
+
+                if (mode === 'multi') {
+                    document.getElementById('multi-title').style.display = 'block';
+                    roomPath = 'rooms/pvp';
+                    isCoopMode = false;
                 }
+                else {
+                    document.getElementById('coop-title').style.display = 'block';
+                    roomPath = 'rooms/coop';
+                    isCoopMode = true;
+                }
+
+                const btn = document.getElementById("start-mp-btn");
+                btn.onclick = () => {
+                    hideCrazyInviteButton();
+                    if (isMasterClient) {
+                        update(ref(db, `${roomPath}/state`), { startTrigger: serverTimestamp() });
+                    }
+                    resetGame(mode); // Agora resetGame recebe o modo corretamente
+                };
                 btn.innerText = "START";
                 btn.disabled = true;
                 btn.classList.remove("pulse-btn");
@@ -1403,29 +1403,37 @@
                 // CRAZYGAMES: Mostrar botão de convite nativo
                 showCrazyInviteButton(roomPath);
 
-                connectLobby();
-                connectColyseus();
+                await connectLobby();
+                // O connectColyseus agora é chamado dentro de connectLobby após termos o UID
             } catch (e) {
                 console.error("Lobby error:", e);
                 alert("Erro ao entrar no Lobby: " + e.message);
-                document.getElementById("start-view").style.display = "block";
+                document.getElementById("main-menu").style.display = "block";
                 document.getElementById("lobby-screen").style.display = "none";
             }
         }
 
         async function connectLobby() {
             document.getElementById("connection-status").innerText = "Authenticating...";
-            try { await signInAnonymously(auth); } catch (error) { logSystem("Login Error: " + error.message, "error"); document.getElementById("connection-status").innerText = "Auth Error"; }
-            const unsubAuth = onAuthStateChanged(auth, (user) => {
+            try {
+                await signInAnonymously(auth);
+            } catch (error) {
+                logSystem("Login Error: " + error.message, "error");
+                document.getElementById("connection-status").innerText = "Auth Error";
+                return;
+            }
+
+            const unsubAuth = onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     myUserId = user.uid;
-                    document.getElementById("connection-status").innerText = "Permitido o acesso"; document.getElementById("connection-status").style.color = "#00FF41";
+                    document.getElementById("connection-status").innerText = "Permitido o acesso";
+                    document.getElementById("connection-status").style.color = "#00FF41";
                     logSystem("ID: " + myUserId.substring(0, 6), "success");
                     document.getElementById("start-mp-btn").disabled = false;
 
                     // Registrar presença no lobby com joinTimestamp para HOST estável
                     const lobbyRef = ref(db, `${roomPath}/players/${myUserId}`);
-                    set(lobbyRef, {
+                    await set(lobbyRef, {
                         id: myUserId,
                         lastUpdate: serverTimestamp(),
                         joinTimestamp: serverTimestamp(),
@@ -1436,12 +1444,10 @@
                     if (unsubLobbyPlayers) unsubLobbyPlayers();
                     unsubLobbyPlayers = onValue(ref(db, roomPath + '/players'), (snapshot) => renderLobbyList(snapshot.val()), (error) => logSystem("DB Error: " + error.message, "error"));
 
-                    // Listener para início remoto do jogo (Manter botão atualizado)
                     const startRef = ref(db, `${roomPath}/state/startTrigger`);
                     onValue(startRef, (s) => {
                         const val = s.val();
                         if (val && !isPlaying) {
-                            console.log("Remote signal to start received.");
                             const btn = document.getElementById("start-mp-btn");
                             if (!isMasterClient) {
                                 btn.innerText = "ENTRAR NA PARTIDA";
@@ -1453,12 +1459,17 @@
                         }
                     });
 
+                    // Agora que temos o UID, conectamos ao Colyseus
+                    connectColyseus(myUserId);
                     unsubAuth();
-                } else { logSystem("Logged Out.", "error"); }
+                }
             });
         }
 
-        async function connectColyseus() {
+        async function connectColyseus(uid) {
+            if (isConnectingColyseus || colyseusRoom) return;
+            isConnectingColyseus = true;
+
             const protocol = window.location.protocol === "https:" ? "wss" : "ws";
             const host = window.location.hostname === "localhost" ? "localhost:2567" : COLYSEUS_PROD_URL;
 
@@ -1466,8 +1477,9 @@
             colyseusClient = new Colyseus.Client(`${protocol}://${host}`);
 
             try {
-                colyseusRoom = await colyseusClient.joinOrCreate("battle_room", { uid: myUserId });
+                colyseusRoom = await colyseusClient.joinOrCreate("battle_room", { uid: uid });
                 logSystem("Colyseus Connected!", "success");
+                isConnectingColyseus = false;
 
                 // Escutar novos jogadores (Schema)
                 colyseusRoom.state.players.onAdd((player, sessionId) => {
@@ -1475,18 +1487,18 @@
 
                     // Usamos player.id (UID do Firebase) como chave principal para evitar duplicatas
                     const uid = player.id || sessionId;
-                    console.log("New remote player (Colyseus):", uid);
-                    getRemotePlayer(uid, player);
+                    console.log("New remote player (Colyseus):", uid, "Session:", sessionId);
+                    getRemotePlayer(uid, player, sessionId);
 
                     // Escutar mudanças de posição do player específico
                     player.onChange(() => {
-                        updateRemotePlayerFromColyseus(uid, player);
+                        updateRemotePlayerFromColyseus(uid, player, sessionId);
                     });
                 });
 
                 colyseusRoom.state.players.onRemove((player, sessionId) => {
                     const uid = player.id || sessionId;
-                    removeRemotePlayer(uid);
+                    removeRemotePlayer(uid, sessionId);
                 });
 
                 // Escutar eventos de tiro
@@ -1495,6 +1507,7 @@
                 });
 
             } catch (err) {
+                isConnectingColyseus = false;
                 console.error("Colyseus error:", err);
                 logSystem("Colyseus Connection Failed", "error");
             }
@@ -2055,10 +2068,17 @@
             });
         }
 
-        function cleanupMultiplayer() {
+        async function cleanupMultiplayer() {
             if (myRef) remove(myRef).catch(() => { });
             if (networkInterval) clearInterval(networkInterval);
-            if (colyseusRoom) try { colyseusRoom.leave(); colyseusRoom = null; } catch (e) { }
+
+            if (colyseusRoom) {
+                try {
+                    console.log("Leaving Colyseus room...");
+                    await colyseusRoom.leave();
+                    colyseusRoom = null;
+                } catch (e) { console.error("Error leaving room:", e); }
+            }
 
             if (unsubLobbyPlayers) unsubLobbyPlayers();
             if (unsubGamePlayers) unsubGamePlayers();
@@ -2068,9 +2088,12 @@
             if (unsubCoopEnemies) unsubCoopEnemies();
             if (unsubCoopKits) unsubCoopKits();
 
-            Object.values(remotePlayers).forEach(rp => scene.remove(rp.mesh));
+            Object.values(remotePlayers).forEach(rp => {
+                if (rp.mesh) scene.remove(rp.mesh);
+            });
             remotePlayers = {};
             networkInterval = null; myRef = null;
+            isConnectingColyseus = false;
         }
 
         function setupPresence() {
@@ -2530,7 +2553,7 @@
             return g;
         }
 
-        function getRemotePlayer(id, d) {
+        function getRemotePlayer(id, d, sessionId = null) {
             if (!remotePlayers[id]) {
                 const m = createRemotePlayerMesh();
                 m.position.set(d.x, d.y, d.z);
@@ -2543,6 +2566,7 @@
                     targetRot: d.rot || 0,
                     hp: d.hp !== undefined ? d.hp : 100,
                     isDead: false,
+                    sessionId: sessionId,
                     pivots: {
                         rLeg: m.getObjectByName("rLegPivot"),
                         lLeg: m.getObjectByName("lLegPivot"),
@@ -2552,23 +2576,27 @@
                         lArm: m.getObjectByName("lArmPivot")
                     }
                 };
+            } else if (sessionId) {
+                // Se o ID já existir mas a sessão mudou, atualizamos a sessão
+                // Isso evita que o onRemove da sessão antiga mate o modelo da nova sessão
+                remotePlayers[id].sessionId = sessionId;
             }
             return remotePlayers[id];
         }
 
-        function updateRemotePlayer(id, d, source = "firebase") {
+        function updateRemotePlayer(id, d, source = "firebase", sessionId = null) {
             // Se o Colyseus estiver ativo, ignoramos atualizações de posição do Firebase
             // para evitar conflitos e flickering (já que o Colyseus é mais rápido)
             if (colyseusRoom && source === "firebase") return;
 
-            const r = getRemotePlayer(id, d);
+            const r = getRemotePlayer(id, d, sessionId);
             r.targetPos.set(d.x, d.y, d.z);
             r.targetRot = d.rot;
         }
 
-        function updateRemotePlayerFromColyseus(sessionId, playerState) {
-            updateRemotePlayer(sessionId, playerState, "colyseus");
-            const r = remotePlayers[sessionId];
+        function updateRemotePlayerFromColyseus(uid, playerState, sessionId) {
+            updateRemotePlayer(uid, playerState, "colyseus", sessionId);
+            const r = remotePlayers[uid];
             if (r) {
                 const currentHP = playerState.hp !== undefined ? playerState.hp : 100;
                 r.hp = currentHP;
@@ -2588,8 +2616,14 @@
             }
         }
 
-        function removeRemotePlayer(id) {
+        function removeRemotePlayer(id, sessionId = null) {
             if (remotePlayers[id]) {
+                // Se passamos um sessionId, só removemos se for a mesma sessão ativa
+                // Isso evita o bug onde onRemove de uma sessão antiga deleta o modelo da nova sessão
+                if (sessionId && remotePlayers[id].sessionId !== sessionId) {
+                    console.log("Ignored removal of player (old session):", id);
+                    return;
+                }
                 scene.remove(remotePlayers[id].mesh);
                 delete remotePlayers[id];
             }
@@ -2626,7 +2660,7 @@
             }
         }
 
-        function resetGame(mode = 'single') {
+        async function resetGame(mode = 'single') {
             console.log("Starting gameplayStart with mode:", mode);
             try {
                 // AVISAR CRAZYGAMES QUE O JOGO COMEÇOU IMEDIATAMENTE
@@ -2638,7 +2672,7 @@
                 document.getElementById('lobby-screen').style.display = 'none';
 
                 // IMPORTANTE: Não limpar tudo se já estivermos no lobby
-                if (mode === 'single') cleanupMultiplayer();
+                if (mode === 'single') await cleanupMultiplayer();
 
                 currentLevel = 1; playerHP = 100; playerLives = 5; score = 0; velocityY = 0; pitch = 0; yaw = 0; camera.rotation.set(0, 0, 0);
                 isMultiplayerMode = (mode === 'multi' || mode === 'coop'); isCoopMode = (mode === 'coop');
