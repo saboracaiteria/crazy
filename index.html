@@ -993,7 +993,8 @@
         <div class="info-panel">HP: <span id="hp">100</span>% | <span id="lives-display" style="display:inline;">LIVES:
                 <span id="lives-count">5</span> | </span>LVL: <span id="level-display">1</span>/10 | KILLS: <span
                 id="score">0</span></div>
-        <div id="multiplayer-status">ONLINE: <span id="mp-count">0</span> PLAYERS</div>
+        <div id="multiplayer-status">ONLINE: <span id="mp-count">0</span> PLAYERS | ROOM: <span id="room-id">...</span>
+        </div>
         <div id="master-status">★ ROOM HOST</div>
         <div id="level-indicator">LEVEL 1</div>
         <div id="pause-btn" class="icon-btn">⚙️</div>
@@ -1485,6 +1486,10 @@
                 colyseusRoom = await colyseusClient.joinOrCreate(roomName, { uid: uid });
                 logSystem(`Connected to ${roomName.toUpperCase()}!`, "success");
                 isConnectingColyseus = false;
+
+                // Show Room ID
+                const rId = document.getElementById("room-id");
+                if (rId) rId.innerText = colyseusRoom.roomId;
 
                 // Escutar novos jogadores (Schema)
                 colyseusRoom.state.players.onAdd((player, sessionId) => {
@@ -2706,7 +2711,8 @@
                 ['game-over-screen', 'win-screen', 'lobby-screen'].forEach(id => document.getElementById(id).style.display = 'none');
                 document.getElementById('pause-btn').style.display = 'flex'; document.getElementById('damage-overlay').style.boxShadow = "none";
                 const ms = document.getElementById('multiplayer-status'); ms.style.display = isMultiplayerMode ? 'block' : 'none';
-                if (isCoopMode) { ms.innerHTML = `CO-OP: <span id="mp-count">0</span> OP`; ms.style.color = "#00FF41"; } else { ms.innerHTML = `ONLINE: <span id="mp-count">0</span> PL`; ms.style.color = "#00f3ff"; }
+                if (isCoopMode) { ms.innerHTML = `CO-OP: <span id="mp-count">0</span> OP | ROOM: <span id="room-id">${colyseusRoom ? colyseusRoom.roomId : '...'}</span>`; ms.style.color = "#00FF41"; }
+                else { ms.innerHTML = `ONLINE: <span id="mp-count">0</span> PL | ROOM: <span id="room-id">${colyseusRoom ? colyseusRoom.roomId : '...'}</span>`; ms.style.color = "#00f3ff"; }
                 document.getElementById('master-status').style.display = 'none';
 
                 playerGroup.position.set(5, 0, 5); createWorld(currentLevel);
