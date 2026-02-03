@@ -2709,14 +2709,22 @@
                     } else setupPresence();
                 }
 
-                // Spawn enemies if not in multiplayer mode
-                // In Coop, the Host-only sync listener will handle spawning
+                // Spawn enemies logic:
+                // 1. Single Player: Always spawn
+                // 2. Coop: Only Host spawns (syncs to others)
+                // 3. PvP: NEVER spawn bots
                 if (!isMultiplayerMode) {
+                    // Single Player
+                    const botCount = 15 + (currentLevel - 1) * 2;
+                    spawnEnemies(botCount, currentLevel);
+                } else if (isCoopMode && isMasterClient) {
+                    // Coop Host
                     const botCount = 15 + (currentLevel - 1) * 2;
                     spawnEnemies(botCount, currentLevel);
                 } else {
                     console.log("Multiplayer/Coop mode: Waiting for sync...");
                 }
+
                 const kitCount = currentLevel <= 2 ? 6 : 8;
                 spawnHealthKits(kitCount);
 
