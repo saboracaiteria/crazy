@@ -1379,7 +1379,7 @@
                 const lobbyTitle = document.getElementById('lobby-title');
                 const btn = document.getElementById("start-mp-btn");
 
-                if (mode === 'multi') {
+                if (mode === 'multi' || mode === 'pvp') {
                     lobbyTitle.innerText = "ONLINE PVP";
                     lobbyTitle.style.color = "#00f3ff";
                     btn.style.borderColor = "#00f3ff";
