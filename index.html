@@ -1359,11 +1359,17 @@
             if (mode === 'coop') {
                 roomPath = 'rooms/coop'; isCoopMode = true;
                 title.innerText = "CO-OP PVE"; title.style.color = "#FF00FF"; btn.style.borderColor = "#FF00FF"; btn.style.color = "#FF00FF";
-                btn.onclick = () => { resetGame('coop'); };
+                btn.onclick = () => {
+                    update(ref(db, `${roomPath}/state`), { gameRunning: true });
+                    resetGame('coop');
+                };
             } else {
                 roomPath = 'rooms/pvp'; isCoopMode = false;
                 title.innerText = "PVP ONLINE"; title.style.color = "#00f3ff"; btn.style.borderColor = "#00f3ff"; btn.style.color = "#00f3ff";
-                btn.onclick = () => { resetGame('multi'); };
+                btn.onclick = () => {
+                    update(ref(db, `${roomPath}/state`), { gameRunning: true });
+                    resetGame('multi');
+                };
             }
             connectLobby();
         }
@@ -1391,6 +1397,15 @@
 
                     if (unsubLobbyPlayers) unsubLobbyPlayers();
                     unsubLobbyPlayers = onValue(ref(db, roomPath + '/players'), (snapshot) => renderLobbyList(snapshot.val()), (error) => logSystem("Erro DB: " + error.message, "error"));
+
+                    // Auto-Start Listener
+                    onValue(ref(db, `${roomPath}/state/gameRunning`), (snapshot) => {
+                        if (snapshot.val() === true && !isPlaying && document.getElementById("lobby-screen").style.display !== "none") {
+                            logSystem("Líder iniciou! Entrando...", "success");
+                            setTimeout(() => { if (isCoopMode) resetGame('coop'); else resetGame('multi'); }, 500);
+                        }
+                    });
+
                     unsubAuth();
                 } else { logSystem("Deslogado.", "error"); }
             });
@@ -1472,7 +1487,10 @@
                 Object.keys(d).forEach(k => {
                     if (k !== myUserId && now - (d[k].lastUpdate || 0) < 10000) {
                         if (!isCoopMode && d[k].kills >= 5) endPVPMatch(false);
-                        active.add(k); c++; updateRemotePlayer(k, d[k]);
+                        // Only render if they have valid coordinates (in-game)
+                        if (d[k].x !== undefined) {
+                            active.add(k); c++; updateRemotePlayer(k, d[k]);
+                        }
                     }
                 });
                 document.getElementById('mp-count').innerText = c;
