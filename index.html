@@ -6,7 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Canaan: Combat Zone</title>
     <link rel="icon" href="data:,">
-    <script src="https://unpkg.com/colyseus.js@^0.15.0/dist/colyseus.js"></script>
     <script>
         // === LAUNCHER & ANTI-BLOCKING SYSTEM ===
         window.CrazySDK = null;
@@ -1127,10 +1126,6 @@
         try { app = initializeApp(firebaseConfig); auth = getAuth(app); db = getDatabase(app); logSystem("Firebase Initialized.", "success"); } catch (e) { console.error(e); }
 
         let myUserId = null, myRef = null, remotePlayers = {}, isMultiplayerMode = false, isCoopMode = false, networkInterval = null;
-        let colyseusClient = null, colyseusRoom = null, isConnectingColyseus = false;
-        let lobbyJoinTime = 0;
-        // Substitua pela sua URL da Render após o deploy
-        const COLYSEUS_PROD_URL = "crazyy-n878.onrender.com";
         let lastActivityTime = Date.now(); // Monitoramento de inatividade
         let isThirdPerson = true, isAiming = false, isManualFiring = false, moveInput = { x: 0, y: 0 }, keyState = { w: false, a: false, s: false, d: false }, pitch = 0, yaw = 0, velocityY = 0, isGrounded = true, recoil = 0, gunRecoilZ = 0, lastShotTime = 0, lastStepTime = 0, minimapCanvas, minimapCtx;
 
@@ -1168,7 +1163,7 @@
         let unsubLobbyPlayers = null, unsubGamePlayers = null, unsubMyPresence = null;
         let unsubCoopLevel = null, unsubCoopKills = null, unsubCoopEnemies = null, unsubCoopKits = null;
 
-        let lastSentPosition = new THREE.Vector3(0, 0, 0), lastSentRotation = 0, lastSentTime = 0, lastColyseusSentTime = 0;
+        let lastSentPosition = new THREE.Vector3(0, 0, 0), lastSentRotation = 0, lastSentTime = 0;
         let audioCtx;
 
         // --- SISTEMA DE MÚSICA ALEATÓRIA ---
@@ -1344,6 +1339,258 @@
             bgmPlayer.play().catch(() => {/* Aguardando interação do usuário para reproduzir áudio */ });
         }
 
+        // --- FIREBASE MULTIPLAYER FUNCTIONS ---
+        function logSystem(msg, type = "normal") {
+            const el = document.getElementById("connection-log");
+            if (!el) { console.log(`[${type}] ${msg}`); return; }
+            const line = document.createElement("div");
+            line.innerText = `> ${msg}`;
+            if (type === "error") line.className = "log-error";
+            if (type === "success") line.className = "log-success";
+            el.appendChild(line);
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function showLobby(mode) {
+            cleanupMultiplayer();
+            document.getElementById("start-view").style.display = "none";
+            document.getElementById("lobby-screen").style.display = "flex";
+            const title = document.getElementById("lobby-title"), btn = document.getElementById("start-mp-btn");
+            if (mode === 'coop') {
+                roomPath = 'rooms/coop'; isCoopMode = true;
+                title.innerText = "CO-OP PVE"; title.style.color = "#FF00FF"; btn.style.borderColor = "#FF00FF"; btn.style.color = "#FF00FF";
+                btn.onclick = () => { resetGame('coop'); };
+            } else {
+                roomPath = 'rooms/pvp'; isCoopMode = false;
+                title.innerText = "PVP ONLINE"; title.style.color = "#00f3ff"; btn.style.borderColor = "#00f3ff"; btn.style.color = "#00f3ff";
+                btn.onclick = () => { resetGame('multi'); };
+            }
+            connectLobby();
+        }
+
+        async function connectLobby() {
+            document.getElementById("connection-status").innerText = "Autenticando...";
+            try { await signInAnonymously(auth); } catch (error) { logSystem("Erro Login: " + error.message, "error"); document.getElementById("connection-status").innerText = "Erro Auth"; }
+            const unsubAuth = onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    myUserId = user.uid;
+                    document.getElementById("connection-status").innerText = "Conectado"; document.getElementById("connection-status").style.color = "#00FF41";
+                    logSystem("ID: " + myUserId.substring(0, 6), "success");
+                    document.getElementById("start-mp-btn").disabled = false;
+
+                    // Registrar presença no lobby
+                    const lobbyRef = ref(db, `${roomPath}/players/${myUserId}`);
+                    onDisconnect(lobbyRef).remove();
+                    set(lobbyRef, { id: myUserId, lastUpdate: serverTimestamp(), status: 'lobby' });
+
+                    // Heartbeat do lobby
+                    if (networkInterval) clearInterval(networkInterval);
+                    networkInterval = setInterval(() => {
+                        update(lobbyRef, { lastUpdate: serverTimestamp() });
+                    }, 5000);
+
+                    if (unsubLobbyPlayers) unsubLobbyPlayers();
+                    unsubLobbyPlayers = onValue(ref(db, roomPath + '/players'), (snapshot) => renderLobbyList(snapshot.val()), (error) => logSystem("Erro DB: " + error.message, "error"));
+                    unsubAuth();
+                } else { logSystem("Deslogado.", "error"); }
+            });
+        }
+
+        function renderLobbyList(data) {
+            const listEl = document.getElementById("lobby-player-list"); listEl.innerHTML = "";
+            if (!data) { listEl.innerHTML = '<div style="padding:10px; text-align:center">Nenhum operador nesta sala.</div>'; return; }
+            const allIds = Object.keys(data).sort();
+            isMasterClient = (allIds[0] === myUserId);
+            const now = Date.now(); let count = 0;
+            allIds.forEach(key => {
+                const p = data[key];
+                if (p.lastUpdate && (now - p.lastUpdate < 10000)) {
+                    count++; const div = document.createElement("div"); div.className = "lobby-player-item"; if (key === myUserId) div.classList.add("me");
+                    let roleTag = (key === allIds[0] && isCoopMode) ? '<span style="color:gold; font-size:10px;"> [HOST]</span>' : '';
+                    div.innerHTML = `<span>${key === myUserId ? "VOCÊ" : `Op. ${key.substring(0, 4)}`}${roleTag}</span> <span>ONLINE</span>`; listEl.appendChild(div);
+                }
+            });
+            if (count === 0) listEl.innerHTML = '<div style="padding:10px; text-align:center">Nenhum operador ativo.</div>';
+        }
+
+        function cleanupMultiplayer() {
+            if (myRef) remove(myRef).catch(() => { });
+            if (networkInterval) clearInterval(networkInterval);
+            if (unsubLobbyPlayers) unsubLobbyPlayers();
+            if (unsubGamePlayers) unsubGamePlayers();
+            if (unsubMyPresence) unsubMyPresence();
+            if (unsubCoopLevel) unsubCoopLevel();
+            if (unsubCoopKills) unsubCoopKills();
+            if (unsubCoopEnemies) unsubCoopEnemies();
+            if (unsubCoopKits) unsubCoopKits();
+            Object.values(remotePlayers).forEach(rp => scene.remove(rp.mesh));
+            remotePlayers = {};
+            networkInterval = null; myRef = null;
+        }
+
+        function setupPresence() {
+            myRef = ref(db, `${roomPath}/players/${myUserId}`);
+            onDisconnect(myRef).remove();
+            set(myRef, { id: myUserId, x: 5, y: 0, z: 5, rot: 0, hp: 100, kills: 0, deaths: 0, lastUpdate: serverTimestamp() });
+
+            if (unsubMyPresence) unsubMyPresence();
+            unsubMyPresence = onValue(myRef, (s) => {
+                const d = s.val(); if (!d) return;
+                if (d.hp < playerHP) {
+                    playerHP = d.hp; document.getElementById('hp').innerText = playerHP;
+                    document.getElementById('damage-overlay').style.boxShadow = "inset 0 0 50px 20px rgba(255,0,0,0.5)";
+                    setTimeout(() => document.getElementById('damage-overlay').style.boxShadow = "none", 200);
+                    if (playerHP <= 0) respawnPvP();
+                }
+                if (d.kills !== undefined && !isCoopMode) {
+                    score = d.kills;
+                    document.getElementById('score').innerText = score;
+                    if (score >= 5) endPVPMatch(true);
+                }
+            });
+
+            networkInterval = setInterval(() => {
+                if (!myRef || !isPlaying) return;
+                const p = playerGroup.position, r = yaw, now = Date.now();
+                if (p.distanceTo(lastSentPosition) > 0.01 || Math.abs(r - lastSentRotation) > 0.01 || (now - lastSentTime > 2000)) {
+                    update(myRef, { x: parseFloat(p.x.toFixed(2)), y: parseFloat(p.y.toFixed(2)), z: parseFloat(p.z.toFixed(2)), rot: parseFloat(r.toFixed(2)), lastUpdate: serverTimestamp() });
+                    lastSentPosition.copy(p); lastSentRotation = r; lastSentTime = now;
+                }
+            }, 50);
+
+            if (unsubGamePlayers) unsubGamePlayers();
+            unsubGamePlayers = onValue(ref(db, roomPath + '/players'), (s) => {
+                const d = s.val(); if (!d) return;
+                const now = Date.now(), active = new Set(); let c = 0;
+                const allIds = Object.keys(d).sort();
+                const newMasterStatus = (allIds[0] === myUserId);
+                if (isCoopMode && newMasterStatus !== isMasterClient) {
+                    isMasterClient = newMasterStatus;
+                    document.getElementById('master-status').style.display = isMasterClient ? 'block' : 'none';
+                    if (isMasterClient) logSystem("Você é o novo HOST da IA.", "success");
+                }
+                Object.keys(d).forEach(k => {
+                    if (k !== myUserId && now - (d[k].lastUpdate || 0) < 10000) {
+                        if (!isCoopMode && d[k].kills >= 5) endPVPMatch(false);
+                        active.add(k); c++; updateRemotePlayer(k, d[k]);
+                    }
+                });
+                document.getElementById('mp-count').innerText = c;
+                Object.keys(remotePlayers).forEach(k => { if (!active.has(k)) { scene.remove(remotePlayers[k].mesh); delete remotePlayers[k]; } });
+            });
+        }
+
+        function setupCoopPresence() {
+            setupPresence();
+            if (unsubCoopLevel) unsubCoopLevel();
+            unsubCoopLevel = onValue(ref(db, `${roomPath}/state`), (s) => {
+                const state = s.val();
+                if (!state) {
+                    if (isMasterClient) update(ref(db, `${roomPath}/state`), { level: 1, kills: 0, enemies: {}, kits: {} });
+                    return;
+                }
+                const l = state.level || 1;
+                const k = state.kills || 0;
+                if (l !== currentLevel) {
+                    currentLevel = l; score = k;
+                    document.getElementById('score').innerText = score;
+                    document.getElementById('level-display').innerText = currentLevel;
+                    document.getElementById('level-indicator').innerText = "ZONA COOP " + currentLevel;
+                    document.getElementById('level-indicator').style.display = 'block';
+                    setTimeout(() => document.getElementById('level-indicator').style.display = 'none', 3000);
+                    // Se mudou de nível, limpar inimigos locais para forçar respawn/sync
+                    enemies.forEach(e => scene.remove(e)); enemies = [];
+                } else if (k !== score) {
+                    score = k;
+                    document.getElementById('score').innerText = score;
+                }
+            });
+
+            // Sincronização de Inimigos (Correção "Manus")
+            if (unsubCoopEnemies) unsubCoopEnemies();
+            unsubCoopEnemies = onValue(ref(db, `${roomPath}/state/enemies`), (s) => {
+                const data = s.val();
+                if (!data) {
+                    // Se não tem inimigos e sou HOST, spawnar
+                    if (isMasterClient && enemies.length === 0) {
+                        const count = 15 + (currentLevel - 1) * 2;
+                        spawnEnemies(count, currentLevel);
+                    }
+                    return;
+                }
+
+                // Se sou CLIENTE e não tenho inimigos (ou contagem difere muito), sincronizar
+                if (!isMasterClient && enemies.length === 0) {
+                    syncEnemiesFromData(data, currentLevel);
+                }
+            });
+        }
+
+        function syncEnemiesFromData(data, level) {
+            enemies.forEach(e => scene.remove(e)); enemies = [];
+            Object.keys(data).forEach(key => {
+                const d = data[key];
+                if (!d.dead) {
+                    const idx = parseInt(key);
+                    const enemy = createEnemyMesh(d.x, d.z, level, idx);
+                    enemy.userData.hp = d.hp || 100;
+                    enemies.push(enemy);
+                    scene.add(enemy);
+                }
+            });
+        }
+
+        function updateRemotePlayer(id, d) {
+            if (!remotePlayers[id]) {
+                const m = createRemotePlayerMesh();
+                m.position.set(d.x, d.y, d.z);
+                m.userData = { id: id, isPlayer: true };
+                scene.add(m);
+                remotePlayers[id] = { mesh: m, targetPos: new THREE.Vector3(d.x, d.y, d.z), targetRot: d.rot };
+            } else {
+                const r = remotePlayers[id]; r.targetPos.set(d.x, d.y, d.z); r.targetRot = d.rot;
+            }
+        }
+
+        function respawnPvP() {
+            if (isMultiplayerMode) { playerLives--; if (playerLives <= 0) { showGameOver(); return; } }
+            let rx, rz; do { rx = Math.floor(Math.random() * mazeSize); rz = Math.floor(Math.random() * mazeSize); } while (mazeMap[rz][rx] === 1);
+            playerHP = 100; document.getElementById('hp').innerText = 100;
+            document.getElementById('lives-count').innerText = playerLives;
+            playerGroup.position.set(rx * 5, 0, rz * 5); pitch = 0; yaw = 0;
+            if (myRef) update(myRef, { hp: 100, x: rx * 5, z: rz * 5 });
+        }
+
+        function endPVPMatch(isVictory) {
+            isPlaying = false; document.exitPointerLock();
+            const title = isVictory ? "VITÓRIA PVP!" : "DERROTA PVP!";
+            const color = isVictory ? "#00FF41" : "#ff3333";
+            const screen = isVictory ? document.getElementById('win-screen') : document.getElementById('game-over-screen');
+            screen.querySelector('h1').innerText = title;
+            screen.querySelector('h1').style.color = color;
+            screen.style.display = 'flex';
+            document.getElementById('mobile-ui').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'none';
+            cleanupMultiplayer(); if (bgmPlayer) bgmPlayer.pause();
+        }
+
+        function registerTeamKill() {
+            if (!isCoopMode) return;
+            runTransaction(ref(db, `${roomPath}/state`), (s) => {
+                if (!s) s = { kills: 0, level: 1 };
+                s.kills = (s.kills || 0) + 1;
+                const killsNeeded = 20 + (s.level * 5);
+                if (s.kills >= killsNeeded) { s.level = (s.level || 1) + 1; s.kills = 0; }
+                return s;
+            });
+        }
+
+        function registerKill() {
+            score++; document.getElementById('score').innerText = score;
+            if (isMultiplayerMode && myRef) runTransaction(ref(db, `${roomPath}/players/${myUserId}/kills`), (k) => (k || 0) + 1);
+        }
+        // --- END FIREBASE FUNCTIONS ---
+
         // Pré-carregar sons para evitar atraso
         const soundCache = {
             shoot: new Audio('sons/tiro.mp3')
@@ -1365,209 +1612,7 @@
             else if (type === 'heal') { osc.type = 'sine'; osc.frequency.setValueAtTime(600, now); osc.frequency.linearRampToValueAtTime(1200, now + 0.1); gain.gain.setValueAtTime(0.3 * vol, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3); osc.start(now); osc.stop(now + 0.3); }
         }
 
-        function logSystem(msg, type = "normal") { const el = document.getElementById("connection-log"); if (!el) return; const line = document.createElement("div"); line.innerText = `> ${msg}`; if (type === "error") line.className = "log-error"; if (type === "success") line.className = "log-success"; el.appendChild(line); el.scrollTop = el.scrollHeight; }
         function mulberry32(a) { return function () { var t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; } }
-
-        async function showLobby(mode) {
-            try {
-                await cleanupMultiplayer();
-                lobbyJoinTime = Date.now();
-                document.getElementById("start-view").style.display = "none";
-                document.getElementById('main-menu').style.display = 'none';
-                document.getElementById('lobby-screen').style.display = 'block';
-
-                const lobbyTitle = document.getElementById('lobby-title');
-                const btn = document.getElementById("start-mp-btn");
-
-                if (mode === 'multi' || mode === 'pvp') {
-                    lobbyTitle.innerText = "ONLINE PVP";
-                    lobbyTitle.style.color = "#00f3ff";
-                    btn.style.borderColor = "#00f3ff";
-                    btn.style.color = "#00f3ff";
-                    roomPath = 'rooms/pvp';
-                    isCoopMode = false;
-                } else {
-                    lobbyTitle.innerText = "CO-OP PVE";
-                    lobbyTitle.style.color = "#FF00FF";
-                    btn.style.borderColor = "#FF00FF";
-                    btn.style.color = "#FF00FF";
-                    roomPath = 'rooms/coop';
-                    isCoopMode = true;
-                }
-
-                btn.onclick = () => {
-                    hideCrazyInviteButton();
-                    if (isMasterClient) {
-                        update(ref(db, `${roomPath}/state`), { startTrigger: serverTimestamp() });
-                    }
-                    resetGame(mode);
-                };
-                btn.innerText = "START";
-                btn.disabled = true;
-                btn.classList.remove("pulse-btn");
-
-                showCrazyInviteButton(roomPath);
-
-                // Determine room name based on mode for strict separation
-                const roomName = (mode === 'coop') ? "coop" : "pvp";
-                await connectLobby(roomName);
-            } catch (e) {
-                console.error("Lobby error:", e);
-                alert("Erro ao entrar no Lobby: " + e.message);
-                document.getElementById("main-menu").style.display = "block";
-                document.getElementById("lobby-screen").style.display = "none";
-            }
-        }
-
-        async function connectLobby(roomName = "pvp") {
-            document.getElementById("connection-status").innerText = "Authenticating...";
-            try {
-                await signInAnonymously(auth);
-            } catch (error) {
-                logSystem("Login Error: " + error.message, "error");
-                document.getElementById("connection-status").innerText = "Auth Error";
-                return;
-            }
-
-            const unsubAuth = onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    myUserId = user.uid;
-                    document.getElementById("connection-status").innerText = "Permitido o acesso";
-                    document.getElementById("connection-status").style.color = "#00FF41";
-                    logSystem("ID: " + myUserId.substring(0, 6), "success");
-                    document.getElementById("start-mp-btn").disabled = false;
-
-                    // Registrar presença no lobby com joinTimestamp para HOST estável
-                    const lobbyRef = ref(db, `${roomPath}/players/${myUserId}`);
-                    await set(lobbyRef, {
-                        id: myUserId,
-                        lastUpdate: serverTimestamp(),
-                        joinTimestamp: serverTimestamp(),
-                        inLobby: true
-                    });
-                    onDisconnect(lobbyRef).remove();
-
-                    if (unsubLobbyPlayers) unsubLobbyPlayers();
-                    unsubLobbyPlayers = onValue(ref(db, roomPath + '/players'), (snapshot) => renderLobbyList(snapshot.val()), (error) => logSystem("DB Error: " + error.message, "error"));
-
-                    const startRef = ref(db, `${roomPath}/state/startTrigger`);
-                    onValue(startRef, (s) => {
-                        const val = s.val();
-                        if (val && !isPlaying) {
-                            const btn = document.getElementById("start-mp-btn");
-                            if (!isMasterClient) {
-                                btn.innerText = "ENTRAR NA PARTIDA";
-                                btn.classList.add("pulse-btn");
-                                btn.disabled = false;
-                                btn.style.borderColor = "#00FF41";
-                                btn.style.color = "#00FF41";
-                            }
-                        }
-                    });
-
-                    // Agora que temos o UID, conectamos ao Colyseus
-                    connectColyseus(myUserId, roomName);
-                    unsubAuth();
-                }
-            });
-        }
-
-        async function connectColyseus(uid, roomName = "pvp") {
-            if (isConnectingColyseus || colyseusRoom) return;
-            isConnectingColyseus = true;
-
-            const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-
-            // Detectar se estamos em ambiente local
-            const hostname = window.location.hostname;
-            const isLocal =
-                hostname === "localhost" ||
-                hostname === "127.0.0.1" ||
-                hostname.startsWith("192.168.") ||
-                hostname.startsWith("10.") ||
-                hostname.startsWith("172.16.") ||
-                window.location.protocol === "file:";
-
-            const host = isLocal ? "localhost:2567" : COLYSEUS_PROD_URL;
-
-            logSystem(`Connecting to Colyseus [${roomName}] at ${host}...`, "info");
-            colyseusClient = new Colyseus.Client(`${protocol}://${host}`);
-
-            try {
-                colyseusRoom = await colyseusClient.joinOrCreate(roomName, { uid: uid });
-                logSystem(`Connected to ${roomName.toUpperCase()}!`, "success");
-                isConnectingColyseus = false;
-
-                // Show Room ID
-                const rId = document.getElementById("room-id");
-                if (rId) rId.innerText = colyseusRoom.roomId;
-
-                // Escutar novos jogadores (Schema)
-                colyseusRoom.state.players.onAdd((player, sessionId) => {
-                    if (sessionId === colyseusRoom.sessionId) return;
-
-                    // Usamos player.id (UID do Firebase) como chave principal para evitar duplicatas
-                    const uid = player.id || sessionId;
-                    console.log("New remote player (Colyseus):", uid, "Session:", sessionId);
-                    getRemotePlayer(uid, player, sessionId);
-
-                    // Escutar mudanças de posição do player específico
-                    player.onChange(() => {
-                        updateRemotePlayerFromColyseus(uid, player, sessionId);
-                    });
-                });
-
-                colyseusRoom.state.players.onRemove((player, sessionId) => {
-                    const uid = player.id || sessionId;
-                    removeRemotePlayer(uid, sessionId);
-                });
-
-                // Escutar eventos de tiro
-                colyseusRoom.onMessage("onShoot", (data) => {
-                    handleRemoteShoot(data);
-                });
-
-            } catch (err) {
-                isConnectingColyseus = false;
-                console.error("Colyseus error:", err);
-                logSystem("Connection Failed: " + (err.message || err), "error");
-                alert("Erro de Conexão: " + (err.message || "Tente novamente"));
-                document.getElementById("main-menu").style.display = "block";
-                document.getElementById("lobby-screen").style.display = "none";
-            }
-        }
-
-        function renderLobbyList(data) {
-            const listEl = document.getElementById("lobby-player-list"); listEl.innerHTML = "";
-            if (!data) { listEl.innerHTML = '<div style="padding:10px; text-align:center; color: #ff00ff; font-weight: bold; animation: pulseAlert 2s infinite;">AGUARDANDO OPONENTE...</div>'; return; }
-
-            // Ordenar por joinTimestamp para garantir que o Host seja estável (o primeiro que entrou)
-            const allIds = Object.keys(data).sort((a, b) => (data[a].joinTimestamp || 0) - (data[b].joinTimestamp || 0));
-            isMasterClient = (allIds[0] === myUserId);
-            const btn = document.getElementById("start-mp-btn");
-            if (isMasterClient) {
-                if (btn.innerText !== "ENTRAR NA PARTIDA") btn.innerText = "INICIAR MISSÃO";
-                btn.disabled = false;
-            } else {
-                // Se não é master, o botão só habilita se o startTrigger já tiver ocorrido
-                // (O listener do startRef cuida disso acima)
-                if (btn.innerText !== "ENTRAR NA PARTIDA") {
-                    btn.innerText = "AGUARDANDO LÍDER...";
-                    btn.disabled = true;
-                }
-            }
-
-            const now = Date.now(); let count = 0;
-            allIds.forEach(key => {
-                const p = data[key];
-                if (p.lastUpdate && (now - p.lastUpdate < 10000)) {
-                    count++; const div = document.createElement("div"); div.className = "lobby-player-item"; if (key === myUserId) div.classList.add("me");
-                    let roleTag = (key === allIds[0]) ? '<span style="color:gold; font-size:10px;"> [HOST]</span>' : '';
-                    div.innerHTML = `<span>${key === myUserId ? "VOCÊ" : `Op. ${key.substring(0, 4)}`}${roleTag}</span> <span>ONLINE</span>`; listEl.appendChild(div);
-                }
-            });
-            if (count === 0) listEl.innerHTML = '<div style="padding:10px; text-align:center; color: #ff00ff; font-weight: bold; animation: pulseAlert 2s infinite;">AGUARDANDO OPONENTE...</div>';
-        }
 
         function createHtmlCoin() {
             const el = document.createElement('div'); el.className = 'scene scene-object'; el.innerHTML = getCoinHTML();
@@ -2092,247 +2137,6 @@
             });
         }
 
-        async function cleanupMultiplayer() {
-            if (myRef) remove(myRef).catch(() => { });
-            if (networkInterval) clearInterval(networkInterval);
-
-            if (colyseusRoom) {
-                try {
-                    console.log("Leaving Colyseus room...");
-                    await colyseusRoom.leave();
-                    colyseusRoom = null;
-                } catch (e) { console.error("Error leaving room:", e); }
-            }
-
-            if (unsubLobbyPlayers) unsubLobbyPlayers();
-            if (unsubGamePlayers) unsubGamePlayers();
-            if (unsubMyPresence) unsubMyPresence();
-            if (unsubCoopLevel) unsubCoopLevel();
-            if (unsubCoopKills) unsubCoopKills();
-            if (unsubCoopEnemies) unsubCoopEnemies();
-            if (unsubCoopKits) unsubCoopKits();
-
-            Object.values(remotePlayers).forEach(rp => {
-                if (rp.mesh) scene.remove(rp.mesh);
-            });
-            remotePlayers = {};
-            networkInterval = null; myRef = null;
-            isConnectingColyseus = false;
-        }
-
-        function setupPresence() {
-            myRef = ref(db, `${roomPath}/players/${myUserId}`);
-            onDisconnect(myRef).remove();
-
-            set(myRef, { id: myUserId, x: 5, y: 0, z: 5, rot: 0, hp: 100, kills: 0, deaths: 0, lastUpdate: serverTimestamp() });
-
-            if (unsubMyPresence) unsubMyPresence();
-            unsubMyPresence = onValue(myRef, (s) => {
-                const d = s.val(); if (!d) return;
-                // FIX: Permite que o primeiro dano seja registrado (removido playerHP < 100)
-                if (d.hp < playerHP) {
-                    playerHP = d.hp; document.getElementById('hp').innerText = playerHP; playSound('shoot');
-                    document.getElementById('damage-overlay').style.boxShadow = "inset 0 0 50px 20px rgba(255,0,0,0.5)";
-                    setTimeout(() => document.getElementById('damage-overlay').style.boxShadow = "none", 200);
-                    if (playerHP <= 0) respawnPvP();
-                }
-
-                if (d.kills !== undefined && !isCoopMode) {
-                    score = d.kills;
-                    document.getElementById('score').innerText = score;
-                    if (d.kills > 0) triggerHitMarker();
-                    // Condição de Vitória PVP
-                    if (score >= 5) {
-                        endPVPMatch(true);
-                    }
-                }
-            });
-
-            networkInterval = setInterval(() => {
-                if (!myRef || !isPlaying) return;
-                const p = playerGroup.position, r = yaw, now = Date.now();
-
-                // Monitoramento de inatividade (1 minuto)
-                if (moveInput.x !== 0 || moveInput.y !== 0 || isManualFiring) {
-                    lastActivityTime = now;
-                }
-
-                if (now - lastActivityTime > 60000) {
-                    console.log("Inatividade detectada. Abortando missão...");
-                    document.getElementById('abort-mission-btn').click();
-                    return;
-                }
-
-                if (p.distanceTo(lastSentPosition) > 0.01 || Math.abs(r - lastSentRotation) > 0.01 || (now - lastSentTime > 2000)) {
-                    update(myRef, {
-                        x: parseFloat(p.x.toFixed(2)),
-                        y: parseFloat(p.y.toFixed(2)),
-                        z: parseFloat(p.z.toFixed(2)),
-                        rot: parseFloat(r.toFixed(2)),
-                        lastUpdate: serverTimestamp(),
-                        active: true
-                    });
-                    lastSentPosition.copy(p); lastSentRotation = r; lastSentTime = now;
-                }
-            }, 50);
-
-            if (unsubGamePlayers) unsubGamePlayers();
-            unsubGamePlayers = onValue(ref(db, roomPath + '/players'), (s) => {
-                const d = s.val(); if (!d) return;
-                const now = Date.now(), active = new Set(); let c = 0;
-
-                // Filtra apenas jogadores ativos nos últimos 10 segundos
-                // Ordenar por joinTimestamp para migração de Host estável
-                const activeIds = Object.keys(d).filter(k => (d[k].lastUpdate || 0) > (now - 10000))
-                    .sort((a, b) => (d[a].joinTimestamp || 0) - (d[b].joinTimestamp || 0));
-
-                // Migração de Host: O jogador mais antigo assume
-                const newMasterStatus = (activeIds[0] === myUserId);
-                if (isCoopMode && newMasterStatus !== isMasterClient) {
-                    isMasterClient = newMasterStatus;
-                    document.getElementById('master-status').style.display = isMasterClient ? 'block' : 'none';
-                    if (isMasterClient) {
-                        logSystem("Você é o novo HOST (Sincronizando...)", "success");
-                        update(ref(db, `${roomPath}/state`), { lastHostMigration: serverTimestamp() });
-                    }
-                }
-
-                Object.keys(d).forEach(k => {
-                    if (k !== myUserId && now - (d[k].lastUpdate || 0) < 10000) {
-                        // Condição de Derrota PVP (Inimigo ganhou)
-                        if (!isCoopMode && d[k].kills >= 5) {
-                            endPVPMatch(false);
-                        }
-
-                        active.add(k); c++;
-                        // Firebase position updates disabled - using Colyseus for real-time movement
-                        // updateRemotePlayer(k, d[k], "firebase"); 
-                    }
-                });
-                document.getElementById('mp-count').innerText = c;
-                Object.keys(remotePlayers).forEach(k => { if (!active.has(k)) { scene.remove(remotePlayers[k].mesh); delete remotePlayers[k]; } });
-            });
-        }
-
-        function endPVPMatch(isVictory) {
-            isPlaying = false;
-            document.exitPointerLock();
-
-            const title = isVictory ? "PVP VICTORY!" : "PVP DEFEAT!";
-            const color = isVictory ? "#00FF41" : "#ff3333";
-
-            const screen = isVictory ? document.getElementById('win-screen') : document.getElementById('game-over-screen');
-            screen.querySelector('h1').innerText = title;
-            screen.querySelector('h1').style.color = color;
-            screen.style.display = 'flex';
-
-            document.getElementById('mobile-ui').style.display = 'none';
-            document.getElementById('pause-btn').style.display = 'none';
-
-            cleanupMultiplayer();
-            if (bgmPlayer) bgmPlayer.pause();
-        }
-
-        function setupCoopPresence() {
-            setupPresence();
-
-            const playersRef = ref(db, roomPath + '/players');
-            onValue(playersRef, (s) => {
-                const d = s.val();
-                if (d) {
-                    const ids = Object.keys(d).sort();
-                    isMasterClient = (ids[0] === myUserId);
-                    document.getElementById('master-status').style.display = isMasterClient ? 'block' : 'none';
-
-                    // Trigger spawn immediately if we are the host and it's the start of the session
-                    // This fixes the race condition where resetGame called spawnEnemies before we knew we were Master
-                    if (isMasterClient && enemies.length === 0) {
-                        console.log("Master Client confirmed. Spawning initial enemies for Coop Level", currentLevel);
-                        const botCount = 15 + (currentLevel - 1) * 2;
-                        spawnEnemies(botCount, currentLevel);
-                    }
-                }
-            }, { onlyOnce: true });
-
-            if (unsubCoopLevel) unsubCoopLevel();
-            unsubCoopLevel = onValue(ref(db, `${roomPath}/state`), (s) => {
-                const state = s.val();
-                if (!state) {
-                    if (isMasterClient) update(ref(db, `${roomPath}/state`), { level: 1, kills: 0, enemies: {}, kits: {} });
-                    return;
-                }
-                const l = state.level || 1;
-                const k = state.kills || 0;
-
-                if (l !== currentLevel) {
-                    currentLevel = l;
-                    score = k;
-                    document.getElementById('score').innerText = score;
-                    createWorld(currentLevel);
-                    enemies.forEach(e => scene.remove(e)); enemies = [];
-                    if (isMasterClient) {
-                        const botCount = 15 + (currentLevel - 1) * 2;
-                        spawnEnemies(botCount, currentLevel);
-                        const enemyData = {};
-                        enemies.forEach((e, idx) => {
-                            enemyData[idx] = { x: e.position.x, z: e.position.z, rot: e.rotation.y, hp: 100 + ((currentLevel - 1) * 25), dead: false };
-                        });
-                        update(ref(db, `${roomPath}/state`), { level: currentLevel, kills: k, enemies: enemyData, kits: {} });
-                    }
-                    const kitCount = currentLevel <= 2 ? 6 : 8;
-                    healthKits.forEach(k => scene.remove(k)); healthKits = [];
-                    spawnHealthKits(kitCount);
-
-                    document.getElementById('level-display').innerText = currentLevel;
-                    document.getElementById('level-indicator').innerText = "COOP ZONE " + currentLevel;
-                    document.getElementById('level-indicator').style.display = 'block';
-                    setTimeout(() => document.getElementById('level-indicator').style.display = 'none', 3000);
-                } else if (k !== score) {
-                    score = k;
-                    document.getElementById('score').innerText = score;
-                }
-            });
-
-            // Kills já são sincronizadas via listener do state acima
-
-            if (unsubCoopEnemies) unsubCoopEnemies();
-            unsubCoopEnemies = onValue(ref(db, `${roomPath}/state/enemies`), (s) => {
-                const d = s.val() || {};
-
-                Object.keys(d).forEach(key => {
-                    const eData = d[key];
-                    let localEnemy = enemies.find(e => e.userData.index == key);
-
-                    if (!localEnemy && !eData.dead) {
-                        localEnemy = createEnemyMesh(eData.x, eData.z, currentLevel, key);
-                        enemies.push(localEnemy);
-                        scene.add(localEnemy);
-                        console.log("Coop Enemy Spawned:", key);
-                    }
-
-                    if (localEnemy) {
-                        if (eData.dead && !localEnemy.userData.dead) {
-                            killEnemyLocal(localEnemy, false);
-                        } else if (!localEnemy.userData.dead) {
-                            localEnemy.userData.targetPos = new THREE.Vector3(eData.x, 0, eData.z);
-                            localEnemy.userData.targetRot = eData.rot;
-                        }
-                    }
-                });
-            });
-
-            if (unsubCoopKits) unsubCoopKits();
-            unsubCoopKits = onValue(ref(db, `${roomPath}/state/kits`), (s) => {
-                const d = s.val() || {};
-                healthKits.forEach(k => {
-                    if (d[k.userData.index] && d[k.userData.index].taken && !k.userData.taken) {
-                        scene.remove(k);
-                        k.userData.taken = true;
-                    }
-                });
-            });
-        }
-
         function addEyes(headMesh) {
             const eyeGeo = new THREE.BoxGeometry(0.05, 0.05, 0.02);
             const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -2460,48 +2264,6 @@
             }
         }
 
-        function registerTeamKill() {
-            if (!isCoopMode) return;
-            runTransaction(ref(db, `${roomPath}/state`), (s) => {
-                if (!s) s = { kills: 0, level: 1, enemies: {}, kits: {} };
-                s.kills = (s.kills || 0) + 1;
-                // Progressão de nível: 1 por 1
-                const killsNeeded = 20 + (s.level * 5);
-                if (s.kills >= killsNeeded) {
-                    s.level = (s.level || 1) + 1;
-                    s.kills = 0; // Zera as kills ao passar de fase
-                    s.enemies = {};
-                    s.kits = {};
-                }
-                return s;
-            });
-        }
-
-        function respawnPvP() {
-            if (isMultiplayerMode) {
-                playerLives--;
-                if (playerLives <= 0) {
-                    if (isCoopMode) {
-                        showGameOver();
-                    } else {
-                        // No PVP, se as vidas acabarem, apenas reseta as vidas para continuar a partida
-                        // ou você pode querer terminar a partida. O pedido diz "nunca deve ir para sala de cooperativo"
-                        // Vamos apenas resetar a posição e HP para manter o player no PVP.
-                        playerLives = 5;
-                        logSystem("Vidas resetadas no PVP.", "normal");
-                    }
-                }
-            }
-            let rx, rz; do { rx = Math.floor(Math.random() * mazeSize); rz = Math.floor(Math.random() * mazeSize); } while (mazeMap[rz][rx] === 1);
-            playerHP = 100; document.getElementById('hp').innerText = 100;
-            document.getElementById('lives-count').innerText = playerLives;
-            playerGroup.position.set(rx * 5, 0, rz * 5); pitch = 0; yaw = 0;
-            if (myRef) {
-                update(myRef, { hp: 100, x: rx * 5, z: rz * 5 });
-                runTransaction(myRef, (d) => { if (d) { d.hp = 100; d.deaths = (d.deaths || 0) + 1; d.x = rx * 5; d.z = rz * 5; } return d; });
-            }
-        }
-
         function createRemotePlayerMesh() {
             const g = new THREE.Group();
             const matBlack = new THREE.MeshStandardMaterial({ color: 0x222222 });
@@ -2585,81 +2347,13 @@
             return g;
         }
 
-        function getRemotePlayer(id, d, sessionId = null) {
-            if (!remotePlayers[id]) {
-                const m = createRemotePlayerMesh();
-                m.position.set(d.x, d.y, d.z);
-                m.userData = { id: id, isPlayer: true, walkCycle: 0 };
-                scene.add(m);
 
-                remotePlayers[id] = {
-                    mesh: m,
-                    targetPos: new THREE.Vector3(d.x, d.y, d.z),
-                    targetRot: d.rot || 0,
-                    hp: d.hp !== undefined ? d.hp : 100,
-                    isDead: false,
-                    sessionId: sessionId,
-                    pivots: {
-                        rLeg: m.getObjectByName("rLegPivot"),
-                        lLeg: m.getObjectByName("lLegPivot"),
-                        rCanela: m.getObjectByName("rCanelaPivot"),
-                        lCanela: m.getObjectByName("lCanelaPivot"),
-                        rArm: m.getObjectByName("rArmPivot"),
-                        lArm: m.getObjectByName("lArmPivot")
-                    }
-                };
-            } else if (sessionId) {
-                // Se o ID já existir mas a sessão mudou, atualizamos a sessão
-                // Isso evita que o onRemove da sessão antiga mate o modelo da nova sessão
-                remotePlayers[id].sessionId = sessionId;
-            }
-            return remotePlayers[id];
-        }
 
-        function updateRemotePlayer(id, d, source = "firebase", sessionId = null) {
-            // Se o Colyseus estiver ativo, ignoramos atualizações de posição do Firebase
-            // para evitar conflitos e flickering (já que o Colyseus é mais rápido)
-            if (colyseusRoom && source === "firebase") return;
 
-            const r = getRemotePlayer(id, d, sessionId);
-            r.targetPos.set(d.x, d.y, d.z);
-            r.targetRot = d.rot;
-        }
 
-        function updateRemotePlayerFromColyseus(uid, playerState, sessionId) {
-            updateRemotePlayer(uid, playerState, "colyseus", sessionId);
-            const r = remotePlayers[uid];
-            if (r) {
-                const currentHP = playerState.hp !== undefined ? playerState.hp : 100;
-                r.hp = currentHP;
-                if (currentHP <= 0) {
-                    if (!r.isDead) {
-                        r.isDead = true;
-                        r.mesh.visible = false;
-                        console.log("Remote player died:", sessionId);
-                    }
-                } else {
-                    if (r.isDead || r.mesh.visible === false) {
-                        r.isDead = false;
-                        r.mesh.visible = true;
-                        console.log("Remote player respawned/visible:", sessionId);
-                    }
-                }
-            }
-        }
 
-        function removeRemotePlayer(id, sessionId = null) {
-            if (remotePlayers[id]) {
-                // Se passamos um sessionId, só removemos se for a mesma sessão ativa
-                // Isso evita o bug onde onRemove de uma sessão antiga deleta o modelo da nova sessão
-                if (sessionId && remotePlayers[id].sessionId !== sessionId) {
-                    console.log("Ignored removal of player (old session):", id);
-                    return;
-                }
-                scene.remove(remotePlayers[id].mesh);
-                delete remotePlayers[id];
-            }
-        }
+
+
 
         // --- AQUI ESTAVA O PROBLEMA: A FUNÇÃO SPAWNENEMIES AGORA ESTÁ DE VOLTA ---
         function spawnEnemies(count, level) {
@@ -2722,8 +2416,8 @@
                 ['game-over-screen', 'win-screen', 'lobby-screen'].forEach(id => document.getElementById(id).style.display = 'none');
                 document.getElementById('pause-btn').style.display = 'flex'; document.getElementById('damage-overlay').style.boxShadow = "none";
                 const ms = document.getElementById('multiplayer-status'); ms.style.display = isMultiplayerMode ? 'block' : 'none';
-                if (isCoopMode) { ms.innerHTML = `CO-OP: <span id="mp-count">0</span> OP | ROOM: <span id="room-id">${colyseusRoom ? colyseusRoom.roomId : '...'}</span>`; ms.style.color = "#00FF41"; }
-                else { ms.innerHTML = `ONLINE: <span id="mp-count">0</span> PL | ROOM: <span id="room-id">${colyseusRoom ? colyseusRoom.roomId : '...'}</span>`; ms.style.color = "#00f3ff"; }
+                if (isCoopMode) { ms.innerHTML = `CO-OP: <span id="mp-count">0</span> OP | ROOM: <span id="room-id">${myUserId ? myUserId.substring(0, 6) : '...'}</span>`; ms.style.color = "#00FF41"; }
+                else { ms.innerHTML = `ONLINE: <span id="mp-count">0</span> PL | ROOM: <span id="room-id">${myUserId ? myUserId.substring(0, 6) : '...'}</span>`; ms.style.color = "#00f3ff"; }
                 document.getElementById('master-status').style.display = 'none';
 
                 playerGroup.position.set(5, 0, 5); createWorld(currentLevel);
@@ -2923,22 +2617,22 @@
                 if (!isThirdPerson && fpsGroup) {
                     const step = e.shiftKey ? 0.1 : 0.01; // Shift for big steps
                     const rStep = 0.1;
-
+ 
                     if (e.code === 'ArrowUp') fpsGroup.position.y += step;
                     if (e.code === 'ArrowDown') fpsGroup.position.y -= step;
                     if (e.code === 'ArrowLeft') fpsGroup.position.x -= step;
                     if (e.code === 'ArrowRight') fpsGroup.position.x += step;
-
+ 
                     // Z Axis (page up/down)
                     if (e.code === 'PageUp') fpsGroup.position.z -= step; // Forward
                     if (e.code === 'PageDown') fpsGroup.position.z += step; // Back
-
+ 
                     // Rotation (I/K/J/L)
                     if (e.code === 'KeyI') fpsGroup.rotation.x -= rStep;
                     if (e.code === 'KeyK') fpsGroup.rotation.x += rStep;
                     if (e.code === 'KeyJ') fpsGroup.rotation.y -= rStep;
                     if (e.code === 'KeyL') fpsGroup.rotation.y += rStep;
-
+ 
                     // Scale (+/-)
                     if (e.code === 'Equal' || e.code === 'NumpadAdd') {
                         const s = fpsGroup.scale.x + 0.0005;
@@ -2948,7 +2642,7 @@
                         const s = Math.max(0.0001, fpsGroup.scale.x - 0.0005);
                         fpsGroup.scale.set(s, s, s);
                     }
-
+ 
                     // Log to debug immediately
                     const d = document.getElementById('debug-overlay');
                     if (d) {
@@ -2957,7 +2651,7 @@
                         d.style.borderColor = 'cyan';
                     }
                 }
-
+ 
                 } */
                 if (!isPlaying) return; const k = e.code; if (k === 'KeyW') keyState.w = true; if (k === 'KeyA') keyState.a = true; if (k === 'KeyS') keyState.s = true; if (k === 'KeyD') keyState.d = true; if (k === 'Space' && isGrounded) { velocityY = JUMP_FORCE; isGrounded = false; playSound('jump'); } if (k === 'KeyV') toggleCameraMode();
             });
@@ -3062,14 +2756,6 @@
                 camera.getWorldDirection(d);
             }
 
-            if (colyseusRoom && !isRemote) {
-                colyseusRoom.send("shoot", {
-                    x: parseFloat(p.x.toFixed(2)),
-                    y: parseFloat(p.y.toFixed(2)),
-                    z: parseFloat(p.z.toFixed(2)),
-                    dir: { x: parseFloat(d.x.toFixed(3)), y: parseFloat(d.y.toFixed(3)), z: parseFloat(d.z.toFixed(3)) }
-                });
-            }
 
             const backPos = p.clone().sub(d.clone().multiplyScalar(1.0));
             b.position.copy(p);
@@ -3078,13 +2764,7 @@
             bullets.push(b);
         }
         function triggerHitMarker() { const c = document.getElementById('crosshair'); c.classList.add('hit-marker'); setTimeout(() => c.classList.remove('hit-marker'), 150); }
-        function registerKill() {
-            score++;
-            document.getElementById('score').innerText = score;
-            if (isMultiplayerMode && myRef) {
-                runTransaction(ref(db, `${roomPath}/players/${myUserId}/kills`), (k) => (k || 0) + 1);
-            }
-        }
+
 
         function updateBullets() {
             let active = 0; enemies.forEach(e => { if (!e.userData.dead) active++; });
@@ -3110,7 +2790,6 @@
                         if (o.userData && o.userData.id) {
                             hit = true; triggerHitMarker();
                             const targetId = o.userData.id;
-                            if (colyseusRoom) colyseusRoom.send("hit", { targetId: targetId });
                             runTransaction(ref(db, `${roomPath}/players/${targetId}`), (t) => {
                                 if (t && t.hp > 0) { t.hp -= 10; if (t.hp <= 0) { t.hp = 0; registerKill(); } }
                                 return t;
@@ -3515,18 +3194,7 @@
                 if (!isGrounded) velocityY -= GRAVITY; playerGroup.position.y += velocityY;
                 if (playerGroup.position.y <= 0) { playerGroup.position.y = 0; velocityY = 0; isGrounded = true; }
 
-                // COLYSEUS UPDATE
-                const now = performance.now();
-                if (colyseusRoom && isPlaying && (now - lastColyseusSentTime > 50)) {
-                    colyseusRoom.send("move", {
-                        x: parseFloat(playerGroup.position.x.toFixed(2)),
-                        y: parseFloat(playerGroup.position.y.toFixed(2)),
-                        z: parseFloat(playerGroup.position.z.toFixed(2)),
-                        rot: parseFloat(yaw.toFixed(2)),
-                        anim: "Idle"
-                    });
-                    lastColyseusSentTime = now;
-                }
+
 
                 if (isMultiplayerMode) Object.values(remotePlayers).forEach(r => { r.mesh.position.lerp(r.targetPos, 0.2); let rd = r.targetRot - r.mesh.rotation.y; while (rd > Math.PI) rd -= Math.PI * 2; while (rd < -Math.PI) rd += Math.PI * 2; r.mesh.rotation.y += rd * 0.2; });
                 processShooting(); updateEnemies(); updateHealthKits(); drawMinimap(); updateBullets(); updateHtmlObjects();
