@@ -1,0 +1,12 @@
+{
+  "name": "canaa-combat-zone",
+  "version": "1.0.0",
+  "description": "Local server for Canaã: Combat Zone",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
