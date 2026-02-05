@@ -2889,20 +2889,31 @@
                 if (e.userData.dead) return;
 
                 // Encontrar o alvo mais próximo (host ou jogadores remotos)
-                let target = playerGroup;
-                let minDist = e.position.distanceTo(playerGroup.position);
+                let target = null;
+                let minDist = Infinity;
 
+                // 1. Check Local Player (Host)
+                if (playerHP > 0) {
+                    target = playerGroup;
+                    minDist = e.position.distanceTo(playerGroup.position);
+                }
+
+                // 2. Check Remote Players
                 if (isCoopMode) {
                     Object.values(remotePlayers).forEach(rp => {
-                        const dist = e.position.distanceTo(rp.mesh.position);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            target = rp.mesh;
+                        // Verifica se o player remoto está vivo (hp > 0 ou status visível)
+                        if (rp.mesh && rp.mesh.visible) {
+                            const dist = e.position.distanceTo(rp.mesh.position);
+                            if (dist < minDist) {
+                                minDist = dist;
+                                target = rp.mesh;
+                            }
                         }
                     });
                 }
 
-                const d = minDist;
+                // Se não achou ninguém (todos mortos), fica parado
+                if (!target) return;
                 if (d < 25 && d > 1.5) {
                     const dir = new THREE.Vector3().subVectors(target.position, e.position).normalize();
                     const np = e.position.clone().add(dir.clone().multiplyScalar(0.075));
@@ -2953,13 +2964,14 @@
 
                     if (isCoopMode && isMasterClient) {
                         // Sincronização de rede (throttle para não sobrecarregar o Firebase)
-                        if (Math.random() < 0.15) {
+                        // Aumentando frequência levemente para movimento mais fluido
+                        if (Math.random() < 0.3) { // Aumentado de 0.15 para 0.3
                             update(ref(db, `${roomPath}/state/enemies/${e.userData.index}`), {
                                 x: parseFloat(e.position.x.toFixed(2)),
                                 z: parseFloat(e.position.z.toFixed(2)),
                                 rot: parseFloat(e.rotation.y.toFixed(2)),
-                                dead: false,
-                                hp: e.userData.hp // Sincroniza HP também para o novo host
+                                dead: false, // Mantém vivo explicitamente
+                                hp: e.userData.hp
                             });
                         }
                     }
