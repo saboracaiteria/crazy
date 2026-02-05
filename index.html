@@ -2914,6 +2914,7 @@
 
                 // Se não achou ninguém (todos mortos), fica parado
                 if (!target) return;
+                const d = minDist;
                 if (d < 25 && d > 1.5) {
                     const dir = new THREE.Vector3().subVectors(target.position, e.position).normalize();
                     const np = e.position.clone().add(dir.clone().multiplyScalar(0.075));
