@@ -702,29 +702,37 @@
             cursor: pointer;
         }
 
+        /* NOVA MIRA EM CRUZ */
         #crosshair {
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 8px;
-            height: 8px;
-            background: #00FF41;
+            width: 20px;
+            height: 20px;
+            background: transparent;
             transform: translate(-50%, -50%);
             pointer-events: none;
             opacity: 0.8;
             z-index: 10;
             display: none;
-            border-radius: 50%;
-            box-shadow: 0 0 5px #00FF41;
+            /* Cross shape using gradients */
+            background-image: linear-gradient(#00FF41, #00FF41), linear-gradient(#00FF41, #00FF41);
+            background-size: 2px 100%, 100% 2px;
+            background-position: center;
+            background-repeat: no-repeat;
+            border-radius: 0;
+            box-shadow: none;
         }
 
         .hit-marker {
             width: 16px !important;
             height: 16px !important;
             background: transparent !important;
-            border: 2px solid #ff0000;
+            background-image: none !important; /* Remove cross for hit marker */
+            border: 2px solid #ff0000 !important;
+            border-radius: 50% !important; /* Circle hit marker */
             transform: translate(-50%, -50%) rotate(45deg) !important;
-            box-shadow: 0 0 10px #ff0000;
+            box-shadow: 0 0 10px #ff0000 !important;
         }
 
         #hud {
@@ -1142,21 +1150,11 @@
         let baseSoldier = null, baseFps = null; // Added baseFps
         let mixers = []; // [mixer, lastAction, actionsMap]
         const clock = new THREE.Clock(); // For animation update
-        const SOLDIER_SCALE = 1.0; // Reduced from 1.5. If still huge, user said 100x?
-        // Wait, if it's 100x, 1.5 -> 0.015? 
-        // Let's assume the model is ~2 units tall and user is seeing camera issues or near-plane clipping? 
-        // No, user said "larger than map".
-        // Let's go with 0.5 first.
-        // Actually, let's try to normalize it in the loader.
-        // But a constant is easier to iterate. I'll set it to 1.0 for now but ADD a BoundingBox check in loader to auto-scale?
-        // No, keep it simple.
-        // I will trust the user partially but 100x is a lot. Maybe 10x?
-        // If I change 1.5 -> 0.15.
-        // Let's use 0.5 and ask user.
+        const SOLDIER_SCALE = 1.0; 
 
         let head, rightArm, leftArm, playerMeshParts, muzzleFlashLight;
         const config = { speed: 0.15, rotationSpeed: 0.005, aimFOV: 40, baseFOV: 75, shoulderOffset: 0.8 };
-        let walkCycle = 0, recoilAngle = 0, fovKick = 0;
+        let walkCycle = 0, recoilAngle = 0, fovKick = 0, gunRecoil = 0; // Adicionada variavel gunRecoil
         let roomPath = '';
         let isMasterClient = false;
 
@@ -1940,7 +1938,7 @@
 
             // 1. HIERARCHY STRUCTURE (Pivots stay, Meshes toggle visibility)
             const pelvePivot = new THREE.Object3D();
-            pelvePivot.position.y = 0.97; // Adjusted to keep feet on ground
+            pelvePivot.position.y = 0.85; // LOWERED to simulate crouch
             playerGroup.add(pelvePivot);
 
             const mPelve = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.25), matBlack);
@@ -1980,13 +1978,13 @@
             const rCoxa = new THREE.Mesh(LegGeo, matGreen); rCoxa.position.y = -0.2; rLegPivot.add(rCoxa);
             const rCanelaPivot = new THREE.Object3D(); rCanelaPivot.position.y = -0.22; rCoxa.add(rCanelaPivot);
             const rCanela = new THREE.Mesh(LegGeo, matGreen); rCanela.position.y = -0.2; rCanelaPivot.add(rCanela);
-            const rBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); rBota.position.set(0, -0.25, 0.05); rCanela.add(rBota);
+            const rBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); rBota.position.set(0, -0.25, -0.1); rCanela.add(rBota);
 
             const lLegPivot = new THREE.Object3D(); lLegPivot.position.set(-0.12, -0.1, 0); pelvePivot.add(lLegPivot);
             const lCoxa = new THREE.Mesh(LegGeo, matGreen); lCoxa.position.y = -0.2; lLegPivot.add(lCoxa);
             const lCanelaPivot = new THREE.Object3D(); lCanelaPivot.position.y = -0.22; lCoxa.add(lCanelaPivot);
             const lCanela = new THREE.Mesh(LegGeo, matGreen); lCanela.position.y = -0.2; lCanelaPivot.add(lCanela);
-            const lBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); lBota.position.set(0, -0.25, 0.05); lCanela.add(lBota);
+            const lBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); lBota.position.set(0, -0.25, -0.1); lCanela.add(lBota);
 
             // 4. ARMS (Attached to peitoPivot)
             const rArmPivot = new THREE.Object3D(); rArmPivot.position.set(0.32, 0.1, 0); peitoPivot.add(rArmPivot);
@@ -2184,7 +2182,7 @@
             const matBota = new THREE.MeshStandardMaterial({ color: 0x111111 });
 
             const pelve = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.25), matBlack);
-            pelve.position.y = 0.97; // Adjusted to keep feet on ground
+            pelve.position.y = 0.85; // LOWERED
             pelve.rotation.y = 0; // Fixed: Was Math.PI (backwards)
             en.add(pelve);
 
@@ -2212,13 +2210,13 @@
             const rCoxa = new THREE.Mesh(LegGeo, matEnemy); rCoxa.position.y = -0.2; rLegPivot.add(rCoxa);
             const rCanelaPivot = new THREE.Object3D(); rCanelaPivot.position.y = -0.22; rCoxa.add(rCanelaPivot);
             const rCanela = new THREE.Mesh(LegGeo, matEnemy); rCanela.position.y = -0.2; rCanelaPivot.add(rCanela);
-            const rBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); rBota.position.set(0, -0.25, 0.05); rCanela.add(rBota);
+            const rBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); rBota.position.set(0, -0.25, -0.1); rCanela.add(rBota);
 
             const lLegPivot = new THREE.Object3D(); lLegPivot.name = "lLegPivot"; lLegPivot.position.set(-0.12, -0.1, 0); pelve.add(lLegPivot);
             const lCoxa = new THREE.Mesh(LegGeo, matEnemy); lCoxa.position.y = -0.2; lLegPivot.add(lCoxa);
             const lCanelaPivot = new THREE.Object3D(); lCanelaPivot.position.y = -0.22; lCoxa.add(lCanelaPivot);
             const lCanela = new THREE.Mesh(LegGeo, matEnemy); lCanela.position.y = -0.2; lCanelaPivot.add(lCanela);
-            const lBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); lBota.position.set(0, -0.25, 0.05); lCanela.add(lBota);
+            const lBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); lBota.position.set(0, -0.25, -0.1); lCanela.add(lBota);
 
             const rArmPivot = new THREE.Object3D(); rArmPivot.name = "rArmPivot"; rArmPivot.position.set(0.32, 0.1, 0); peito.add(rArmPivot);
             const rBiceps = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.35), matSkin); rBiceps.position.y = -0.15; rArmPivot.add(rBiceps);
@@ -2302,7 +2300,7 @@
             const matBota = new THREE.MeshStandardMaterial({ color: 0x111111 });
 
             const pelve = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.25), matBlack);
-            pelve.position.y = 0.97; // Adjusted to keep feet on ground
+            pelve.position.y = 0.85; // LOWERED
             pelve.rotation.y = 0; // Fixed: Was Math.PI (backwards)
             g.add(pelve);
 
@@ -2332,13 +2330,13 @@
             const rCoxa = new THREE.Mesh(LegGeo, matCamo); rCoxa.position.y = -0.2; rLegPivot.add(rCoxa);
             const rCanelaPivot = new THREE.Object3D(); rCanelaPivot.position.y = -0.22; rCoxa.add(rCanelaPivot);
             const rCanela = new THREE.Mesh(LegGeo, matCamo); rCanela.position.y = -0.2; rCanelaPivot.add(rCanela);
-            const rBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); rBota.position.set(0, -0.25, 0.05); rCanela.add(rBota);
+            const rBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); rBota.position.set(0, -0.25, -0.1); rCanela.add(rBota);
 
             const lLegPivot = new THREE.Object3D(); lLegPivot.name = "lLegPivot"; lLegPivot.position.set(-0.12, -0.1, 0); pelve.add(lLegPivot);
             const lCoxa = new THREE.Mesh(LegGeo, matCamo); lCoxa.position.y = -0.2; lLegPivot.add(lCoxa);
             const lCanelaPivot = new THREE.Object3D(); lCanelaPivot.position.y = -0.22; lCoxa.add(lCanelaPivot);
             const lCanela = new THREE.Mesh(LegGeo, matCamo); lCanela.position.y = -0.2; lCanelaPivot.add(lCanela);
-            const lBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); lBota.position.set(0, -0.25, 0.05); lCanela.add(lBota);
+            const lBota = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), matBota); lBota.position.set(0, -0.25, -0.1); lCanela.add(lBota);
 
             const rArmPivot = new THREE.Object3D(); rArmPivot.name = "rArmPivot"; rArmPivot.position.set(0.32, 0.1, 0); peito.add(rArmPivot);
             const rBiceps = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.35), matSkin); rBiceps.position.y = -0.15; rArmPivot.add(rBiceps);
@@ -2628,49 +2626,6 @@
             document.getElementById('mode-switch-btn').onclick = () => { isPC = !isPC; document.getElementById('mode-switch-btn').innerText = isPC ? "💻" : "📱"; };
             document.addEventListener('mousemove', (e) => { if (document.pointerLockElement === document.body && isPlaying) { yaw -= e.movementX * settings.sens; pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * settings.sens)); } });
             document.addEventListener('keydown', (e) => {
-                // FPS Calibration
-
-                /*
-                // FPS CALIBRATION CONTROLS (Only in FPS mode)
-                if (!isThirdPerson && fpsGroup) {
-                    const step = e.shiftKey ? 0.1 : 0.01; // Shift for big steps
-                    const rStep = 0.1;
- 
-                    if (e.code === 'ArrowUp') fpsGroup.position.y += step;
-                    if (e.code === 'ArrowDown') fpsGroup.position.y -= step;
-                    if (e.code === 'ArrowLeft') fpsGroup.position.x -= step;
-                    if (e.code === 'ArrowRight') fpsGroup.position.x += step;
- 
-                    // Z Axis (page up/down)
-                    if (e.code === 'PageUp') fpsGroup.position.z -= step; // Forward
-                    if (e.code === 'PageDown') fpsGroup.position.z += step; // Back
- 
-                    // Rotation (I/K/J/L)
-                    if (e.code === 'KeyI') fpsGroup.rotation.x -= rStep;
-                    if (e.code === 'KeyK') fpsGroup.rotation.x += rStep;
-                    if (e.code === 'KeyJ') fpsGroup.rotation.y -= rStep;
-                    if (e.code === 'KeyL') fpsGroup.rotation.y += rStep;
- 
-                    // Scale (+/-)
-                    if (e.code === 'Equal' || e.code === 'NumpadAdd') {
-                        const s = fpsGroup.scale.x + 0.0005;
-                        fpsGroup.scale.set(s, s, s);
-                    }
-                    if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
-                        const s = Math.max(0.0001, fpsGroup.scale.x - 0.0005);
-                        fpsGroup.scale.set(s, s, s);
-                    }
- 
-                    // Log to debug immediately
-                    const d = document.getElementById('debug-overlay');
-                    if (d) {
-                        d.innerText = `FPS CALIBRATION:\nPos: ${fpsGroup.position.toArray().map(v => v.toFixed(3))}\nRot: ${fpsGroup.rotation.toArray().slice(0, 3).map(v => v.toFixed(2))}\nScale: ${fpsGroup.scale.x.toFixed(4)}\n[Arrows]=Move XY | [PgUp/Dn]=Move Z | [IJKL]=Rotate | [+/-]=Scale`;
-                        d.style.color = 'cyan';
-                        d.style.borderColor = 'cyan';
-                    }
-                }
- 
-                } */
                 if (!isPlaying) return; const k = e.code; if (k === 'KeyW') keyState.w = true; if (k === 'KeyA') keyState.a = true; if (k === 'KeyS') keyState.s = true; if (k === 'KeyD') keyState.d = true; if (k === 'Space' && isGrounded) { velocityY = JUMP_FORCE; isGrounded = false; playSound('jump'); } if (k === 'KeyV') toggleCameraMode();
             });
             document.addEventListener('keyup', (e) => { const k = e.code; if (k === 'KeyW') keyState.w = false; if (k === 'KeyA') keyState.a = false; if (k === 'KeyS') keyState.s = false; if (k === 'KeyD') keyState.d = false; });
@@ -2721,8 +2676,16 @@
                 if (gunGroup.parent !== rightArm) {
                     rightArm.add(gunGroup);
                 }
-                gunGroup.position.set(0, -0.65, -0.1);
-                gunGroup.rotation.set(-Math.PI / 2, 0, 0);
+                // Reset gun pos based on camera mode
+                if (isThirdPerson) {
+                    gunGroup.position.set(0, -0.65, -0.1);
+                    gunGroup.rotation.set(-Math.PI / 2, 0, 0);
+                } else {
+                    // FPS Gun Alignment
+                    // Lowered slightly to align better with center screen
+                    gunGroup.position.set(0, -0.65, -0.1); 
+                    gunGroup.rotation.set(-Math.PI / 2, 0, 0);
+                }
             }
 
             // Cleanup ghost procedural arms if any
@@ -2738,14 +2701,16 @@
         function processShooting() {
             const now = performance.now(); if (!isManualFiring || now - lastShotTime < 140) return;
             lastShotTime = now; playSound('shoot'); recoilAngle = 0.05; pitch = Math.min(1.4, pitch + 0.01);
+            
+            // --- ATUALIZAÇÃO SOLICITADA ---
+            // Simular o tranco da arma (Movimento rápido para frente/trás) - AUMENTADO
+            gunRecoil = 0.6; // Impulso instantâneo mais forte
+
             // Apply kick zoom in both modes
             fovKick = 2;
 
-
-
             const f = gunGroup.getObjectByName("flash"); if (f) { f.visible = true; setTimeout(() => f.visible = false, 40); }
             muzzleFlashLight.intensity = 3; setTimeout(() => muzzleFlashLight.intensity = 0, 50); spawnBullet();
-
         }
         function checkWall(x, z) { for (let w of walls) if (Math.abs(x - w.position.x) < 2.8 && Math.abs(z - w.position.z) < 2.8) return true; return false; }
         function handleRemoteShoot(data) {
@@ -2889,31 +2854,19 @@
                 if (e.userData.dead) return;
 
                 // Encontrar o alvo mais próximo (host ou jogadores remotos)
-                let target = null;
-                let minDist = Infinity;
+                let target = playerGroup;
+                let minDist = e.position.distanceTo(playerGroup.position);
 
-                // 1. Check Local Player (Host)
-                if (playerHP > 0) {
-                    target = playerGroup;
-                    minDist = e.position.distanceTo(playerGroup.position);
-                }
-
-                // 2. Check Remote Players
                 if (isCoopMode) {
                     Object.values(remotePlayers).forEach(rp => {
-                        // Verifica se o player remoto está vivo (hp > 0 ou status visível)
-                        if (rp.mesh && rp.mesh.visible) {
-                            const dist = e.position.distanceTo(rp.mesh.position);
-                            if (dist < minDist) {
-                                minDist = dist;
-                                target = rp.mesh;
-                            }
+                        const dist = e.position.distanceTo(rp.mesh.position);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            target = rp.mesh;
                         }
                     });
                 }
 
-                // Se não achou ninguém (todos mortos), fica parado
-                if (!target) return;
                 const d = minDist;
                 if (d < 25 && d > 1.5) {
                     const dir = new THREE.Vector3().subVectors(target.position, e.position).normalize();
@@ -2928,21 +2881,29 @@
                         // Leg animation
                         e.userData.walkCycle += 0.2;
                         const wc = e.userData.walkCycle;
+                        
+                        // NEW REALISTIC WALK LOGIC (Cautious/Crouched)
+                        // INVERTED LOGIC AS PER USER REQUEST (Prev: baseCrouch=-0.4, baseKnee=0.8)
+                        // New: baseCrouch=0.3, baseKnee=-0.6 to bend forward correctly
+                        const baseCrouch = 0.3;
+                        const baseKnee = -0.6;
                         const legSwing = Math.sin(wc) * 0.5;
-                        const kneeFlex = Math.abs(Math.cos(wc)) * 0.4;
+                        
                         if (e.userData.pivots) {
-                            e.userData.pivots.lLeg.rotation.x = legSwing;
-                            e.userData.pivots.lCanela.rotation.x = -kneeFlex;
-                            e.userData.pivots.rLeg.rotation.x = -legSwing;
-                            e.userData.pivots.rCanela.rotation.x = -Math.abs(Math.sin(wc)) * 0.4;
+                            e.userData.pivots.lLeg.rotation.x = baseCrouch + legSwing;
+                            e.userData.pivots.lCanela.rotation.x = baseKnee - Math.abs(Math.cos(wc)) * 0.5;
+                            e.userData.pivots.rLeg.rotation.x = baseCrouch - legSwing;
+                            e.userData.pivots.rCanela.rotation.x = baseKnee - Math.abs(Math.sin(wc)) * 0.5;
                         }
                     } else {
-                        // Reset legs when stopped
+                        // Reset legs when stopped (Still crouched)
                         if (e.userData.pivots) {
-                            e.userData.pivots.lLeg.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.lLeg.rotation.x, 0, 0.1);
-                            e.userData.pivots.lCanela.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.lCanela.rotation.x, 0, 0.1);
-                            e.userData.pivots.rLeg.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.rLeg.rotation.x, 0, 0.1);
-                            e.userData.pivots.rCanela.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.rCanela.rotation.x, 0, 0.1);
+                            const baseCrouch = 0.3;
+                            const baseKnee = -0.6;
+                            e.userData.pivots.lLeg.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.lLeg.rotation.x, baseCrouch, 0.1);
+                            e.userData.pivots.lCanela.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.lCanela.rotation.x, baseKnee, 0.1);
+                            e.userData.pivots.rLeg.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.rLeg.rotation.x, baseCrouch, 0.1);
+                            e.userData.pivots.rCanela.rotation.x = THREE.MathUtils.lerp(e.userData.pivots.rCanela.rotation.x, baseKnee, 0.1);
                         }
                     }
 
@@ -2965,14 +2926,13 @@
 
                     if (isCoopMode && isMasterClient) {
                         // Sincronização de rede (throttle para não sobrecarregar o Firebase)
-                        // Aumentando frequência levemente para movimento mais fluido
-                        if (Math.random() < 0.3) { // Aumentado de 0.15 para 0.3
+                        if (Math.random() < 0.15) {
                             update(ref(db, `${roomPath}/state/enemies/${e.userData.index}`), {
                                 x: parseFloat(e.position.x.toFixed(2)),
                                 z: parseFloat(e.position.z.toFixed(2)),
                                 rot: parseFloat(e.rotation.y.toFixed(2)),
-                                dead: false, // Mantém vivo explicitamente
-                                hp: e.userData.hp
+                                dead: false,
+                                hp: e.userData.hp // Sincroniza HP também para o novo host
                             });
                         }
                     }
@@ -3087,14 +3047,17 @@
                     if (distMoved > 0.01) {
                         m.userData.walkCycle = (m.userData.walkCycle || 0) + 0.2;
                         const wc = m.userData.walkCycle;
+                        
+                        // NEW REALISTIC REMOTE ANIMATION - INVERTED LEG ROTATIONS
+                        const baseCrouch = 0.3; // Thigh Fwd
+                        const baseKnee = -0.6; // Shin Back
                         const legSwing = Math.sin(wc) * 0.5;
-                        const kneeFlex = Math.abs(Math.cos(wc)) * 0.4;
 
                         if (r.pivots) {
-                            if (r.pivots.lLeg) r.pivots.lLeg.rotation.x = legSwing;
-                            if (r.pivots.lCanela) r.pivots.lCanela.rotation.x = -kneeFlex;
-                            if (r.pivots.rLeg) r.pivots.rLeg.rotation.x = -legSwing;
-                            if (r.pivots.rCanela) r.pivots.rCanela.rotation.x = -Math.abs(Math.sin(wc)) * 0.4;
+                            if (r.pivots.lLeg) r.pivots.lLeg.rotation.x = baseCrouch + legSwing;
+                            if (r.pivots.lCanela) r.pivots.lCanela.rotation.x = baseKnee - Math.abs(Math.cos(wc)) * 0.5;
+                            if (r.pivots.rLeg) r.pivots.rLeg.rotation.x = baseCrouch - legSwing;
+                            if (r.pivots.rCanela) r.pivots.rCanela.rotation.x = baseKnee - Math.abs(Math.sin(wc)) * 0.5;
 
                             // Remote player arms pointing forward
                             if (r.pivots.rArm) r.pivots.rArm.rotation.x = Math.PI / 2;
@@ -3102,10 +3065,12 @@
                         }
                     } else {
                         if (r.pivots) {
-                            if (r.pivots.lLeg) r.pivots.lLeg.rotation.x = THREE.MathUtils.lerp(r.pivots.lLeg.rotation.x, 0, 0.1);
-                            if (r.pivots.lCanela) r.pivots.lCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.lCanela.rotation.x, 0, 0.1);
-                            if (r.pivots.rLeg) r.pivots.rLeg.rotation.x = THREE.MathUtils.lerp(r.pivots.rLeg.rotation.x, 0, 0.1);
-                            if (r.pivots.rCanela) r.pivots.rCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.rCanela.rotation.x, 0, 0.1);
+                            const baseCrouch = 0.3;
+                            const baseKnee = -0.6;
+                            if (r.pivots.lLeg) r.pivots.lLeg.rotation.x = THREE.MathUtils.lerp(r.pivots.lLeg.rotation.x, baseCrouch, 0.1);
+                            if (r.pivots.lCanela) r.pivots.lCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.lCanela.rotation.x, baseKnee, 0.1);
+                            if (r.pivots.rLeg) r.pivots.rLeg.rotation.x = THREE.MathUtils.lerp(r.pivots.rLeg.rotation.x, baseCrouch, 0.1);
+                            if (r.pivots.rCanela) r.pivots.rCanela.rotation.x = THREE.MathUtils.lerp(r.pivots.rCanela.rotation.x, baseKnee, 0.1);
 
                             // Remote player arms pointing forward
                             if (r.pivots.rArm) r.pivots.rArm.rotation.x = Math.PI / 2;
@@ -3115,8 +3080,17 @@
                 });
 
                 const ch = document.getElementById('crosshair');
-                if (ch) { if (isAiming && !isThirdPerson) ch.style.opacity = '0'; else ch.style.opacity = '0.9'; }
+                // LOGICA ALTERADA: Mira visivel sempre, exceto se quiser esconder no ADS
+                // O usuario pediu "em primeira pessoa esta sem mira", entao forçamos visibilidade
+                if (ch) { 
+                    ch.style.opacity = '0.9'; 
+                }
+                
                 recoilAngle = THREE.MathUtils.lerp(recoilAngle, 0, 0.15); fovKick = THREE.MathUtils.lerp(fovKick, 0, 0.4);
+
+                // --- ATUALIZAÇÃO SOLICITADA ---
+                // Suavizar o recuo de volta para 0
+                gunRecoil = THREE.MathUtils.lerp(gunRecoil, 0, 0.2);
 
                 // ZOOM ENABLED IN BOTH MODES
                 const base = settings.fov;
@@ -3143,22 +3117,33 @@
                         window.playerBodyMeshes.forEach(m => m.visible = isThirdPerson);
                     }
 
-                    // 1. LEGS ANIMATION (Coxa/Canela)
-                    const walkSpeed = 0.2;
+                    // 1. REALISTIC ANIMATION LOGIC (Local Player)
+                    // INVERTED LOGIC AS PER USER REQUEST (Prev: baseCrouch=-0.4, baseKnee=0.8)
+                    // New: baseCrouch=0.3, baseKnee=-0.6 to bend forward correctly
+                    const baseCrouch = 0.3;
+                    const baseKnee = -0.6;
+                    // Oscillation for walk
                     const legSwing = Math.sin(walkCycle) * 0.5;
-                    const kneeFlex = Math.abs(Math.cos(walkCycle)) * 0.4; // Flexion at knee
+                    
+                    playerMeshParts.lLegPivot.rotation.x = baseCrouch + legSwing;
+                    playerMeshParts.lCanelaPivot.rotation.x = baseKnee - Math.abs(Math.cos(walkCycle)) * 0.5;
+                    
+                    playerMeshParts.rLegPivot.rotation.x = baseCrouch - legSwing;
+                    playerMeshParts.rCanelaPivot.rotation.x = baseKnee - Math.abs(Math.sin(walkCycle)) * 0.5;
 
-                    playerMeshParts.lLegPivot.rotation.x = legSwing;
-                    playerMeshParts.lCanelaPivot.rotation.x = -kneeFlex; // Bend backward
-
-                    playerMeshParts.rLegPivot.rotation.x = -legSwing;
-                    playerMeshParts.rCanelaPivot.rotation.x = -Math.abs(Math.sin(walkCycle)) * 0.4; // Bend backward
+                    // Body Bobbing (Weight transfer)
+                    playerMesh.position.y = 0.88 + Math.abs(Math.sin(walkCycle * 2)) * 0.03;
+                    
+                    // Subtle torso twist
+                    if (playerMeshParts.torso) {
+                        playerMeshParts.torso.rotation.y = Math.sin(walkCycle) * 0.1;
+                    }
 
                     const currentPitch = (Math.PI / 2) + pitch + recoilAngle;
                     const isShooting = (performance.now() - lastShotTime < 1500) || isAiming;
 
                     if (!isThirdPerson) {
-                        // 2. FPS ARMS LOGIC
+                        // 2. FPS ARMS LOGIC (Alinhamento Corrigido)
                         const swayY = Math.sin(walkCycle * 2) * 0.03;
                         const kickY = recoilAngle * 0.1;
                         const kickZ = recoilAngle * 0.1;
@@ -3168,22 +3153,22 @@
                         playerMeshParts.lArmPivot.rotation.set(currentPitch, 0, 0);
 
                         // Unified position: Arms stay on the sides even when aiming (Zoom only)
-                        playerMeshParts.rArmPivot.position.lerp(new THREE.Vector3(0.25, 0.1 - swayY + kickY, 0.1 + kickZ + wallRetract), 0.2);
-                        playerMeshParts.lArmPivot.position.lerp(new THREE.Vector3(-0.25, 0.1 - swayY + kickY, 0.12 + kickZ + wallRetract), 0.2);
+                        // AJUSTE: Braço mais baixo (0.1 -> 0.05) para alinhar cano com centro
+                        // O gunRecoil afeta o Z
+                        playerMeshParts.rArmPivot.position.lerp(new THREE.Vector3(0.25, 0.05 - swayY + kickY, 0.1 + kickZ + wallRetract + gunRecoil), 0.3);
+                        playerMeshParts.lArmPivot.position.lerp(new THREE.Vector3(-0.25, 0.05 - swayY + kickY, 0.12 + kickZ + wallRetract + gunRecoil), 0.3);
                         playerMeshParts.rElbow.rotation.set(0.2, 0, 0);
                         playerMeshParts.lElbow.rotation.set(0.2, 0, 0);
                     } else {
-                        // 3. TPS BODY LOGIC
-                        if (isShooting) {
-                            playerMeshParts.rArmPivot.rotation.x = THREE.MathUtils.lerp(playerMeshParts.rArmPivot.rotation.x, currentPitch, 0.2);
-                            playerMeshParts.lArmPivot.rotation.x = THREE.MathUtils.lerp(playerMeshParts.lArmPivot.rotation.x, currentPitch, 0.2);
-                            playerMeshParts.lArmPivot.rotation.z = THREE.MathUtils.lerp(playerMeshParts.lArmPivot.rotation.z, 0.5, 0.2);
-                        } else {
-                            playerMeshParts.rArmPivot.rotation.x = THREE.MathUtils.lerp(playerMeshParts.rArmPivot.rotation.x, Math.PI / 8 + Math.sin(walkCycle) * 0.2, 0.1);
-                            playerMeshParts.lArmPivot.rotation.x = THREE.MathUtils.lerp(playerMeshParts.lArmPivot.rotation.x, Math.PI / 8 - Math.sin(walkCycle) * 0.2, 0.1);
-                            playerMeshParts.rArmPivot.rotation.z = THREE.MathUtils.lerp(playerMeshParts.rArmPivot.rotation.z, 0, 0.1);
-                            playerMeshParts.lArmPivot.rotation.z = THREE.MathUtils.lerp(playerMeshParts.lArmPivot.rotation.z, 0, 0.1);
-                        }
+                        // 3. TPS BODY LOGIC (Braços sempre levantados)
+                        // Use currentPitch directly to keep arms raised towards aim
+                        playerMeshParts.rArmPivot.rotation.x = THREE.MathUtils.lerp(playerMeshParts.rArmPivot.rotation.x, currentPitch, 0.2);
+                        playerMeshParts.lArmPivot.rotation.x = THREE.MathUtils.lerp(playerMeshParts.lArmPivot.rotation.x, currentPitch, 0.2);
+                        
+                        // Keep aiming inward slightly
+                        playerMeshParts.lArmPivot.rotation.z = THREE.MathUtils.lerp(playerMeshParts.lArmPivot.rotation.z, 0.5, 0.2);
+                        playerMeshParts.rArmPivot.rotation.z = THREE.MathUtils.lerp(playerMeshParts.rArmPivot.rotation.z, 0, 0.1);
+
                         playerMeshParts.rArmPivot.position.set(0.32, 0.1, 0);
                         playerMeshParts.lArmPivot.position.set(-0.32, 0.1, 0);
                     }
@@ -3243,5 +3228,6 @@
         })();
     </script>
 </body>
+
 
 </html>
