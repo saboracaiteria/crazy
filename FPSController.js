@@ -1,4 +1,6 @@
-class FPSController {
+import * as THREE from 'three';
+
+export default class FPSController {
     constructor() {
         this.group = null;
         this.mixer = null;
@@ -6,7 +8,7 @@ class FPSController {
         this.config = null;
         this.baseModel = null;
         this.camera = null;
-        
+
         this.debugEl = null;
     }
 
@@ -14,6 +16,8 @@ class FPSController {
         this.baseModel = baseModel;
         this.camera = camera;
         this.createDebugOverlay();
+        // Since we are using an existing mesh (gunGroup) which might not have animations or config on disk
+        // We will try to load config, but fallback gracefully to a default config that works with the passed mesh
         this.loadConfig();
     }
 
@@ -22,13 +26,13 @@ class FPSController {
         if (!this.debugEl) {
             this.debugEl = document.createElement('div');
             this.debugEl.id = 'debug-overlay';
-            this.debugEl.style.cssText = 'position:fixed;top:50px;left:10px;color:cyan;font-size:14px;background:rgba(0,0,0,0.8);padding:10px;pointer-events:none;z-index:9999;font-family:monospace;white-space:pre;border:2px solid cyan;';
+            this.debugEl.style.cssText = 'position:fixed;top:50px;left:10px;color:cyan;font-size:14px;background:rgba(0,0,0,0.8);padding:10px;pointer-events:none;z-index:9999;font-family:monospace;white-space:pre;border:2px solid cyan;display:none;'; // Hidden by default
             document.body.appendChild(this.debugEl);
         }
     }
 
     updateDebug(msg, color = 'cyan') {
-        if (this.debugEl) {
+        if (this.debugEl && this.debugEl.style.display !== 'none') {
             const ver = new Date().toLocaleTimeString();
             this.debugEl.innerText = `FPS CONTROLLER (${ver}):\n${msg}`;
             this.debugEl.style.color = color;
@@ -37,6 +41,7 @@ class FPSController {
     }
 
     loadConfig() {
+        // Try to load config, if fails use default for procedural gun
         fetch('fps_config.json')
             .then(r => r.json())
             .then(c => {
@@ -45,19 +50,15 @@ class FPSController {
                 this.setupModel();
             })
             .catch(e => {
-                console.error("Could not load fps_config.json", e);
-                // Ajustado: Arma mais à frente (z: -0.6) e um pouco acima (y: -0.35 em vez de -0.4)
+                console.log("Using default FPS config (Procedural Mode)");
+                // Default config for the procedural gunGroup
                 this.config = {
                     transform: {
-                        scale: 0.001,
-                        position: [0.35, -0.35, -0.6],
-                        rotation: [0, Math.PI, 0]
+                        scale: 1.0, // Scale 1 because gunGroup is already sized
+                        position: [0.25, -0.25, -0.3], // Offset relative to camera
+                        rotation: [0, Math.PI, 0] // Rotate to face forward if needed
                     },
-                    animations: {
-                        idle: "Idle",
-                        run: "Run",
-                        shoot: "Shoot"
-                    }
+                    animations: {} // No animations for procedural mesh yet
                 };
                 this.setupModel();
             });
@@ -79,12 +80,18 @@ class FPSController {
         }
 
         try {
+            // In the original code, it cloned the model. 
+            // For procedural groups, cloning might lose some references if not careful (like the muzzle flash light).
+            // But let's clone to be safe and independent of the player model.
+
+            // To properly clone a Group with Lights/Meshes:
             const rawModel = this.baseModel.clone();
-            const box = new THREE.Box3().setFromObject(rawModel);
-            const center = box.getCenter(new THREE.Vector3());
 
             this.group = new THREE.Group();
-            rawModel.position.copy(center).negate();
+
+            // Reset position of rawModel inside group to be centered if needed, 
+            // but for gunGroup it's likely already centered around (0,0,0) or handles.
+            // Let's just add it.
             this.group.add(rawModel);
 
             const t = this.config.transform;
@@ -92,33 +99,30 @@ class FPSController {
             this.group.position.fromArray(t.position);
             this.group.rotation.fromArray(t.rotation);
 
+            // Ensure depth test handling for FPS view
             rawModel.traverse(o => {
                 if (o.isMesh) {
                     o.renderOrder = 10;
-                    o.material.depthTest = false; 
+                    o.material = o.material.clone(); // Clone material to avoid affecting TPS model
+                    o.material.depthTest = false;
+                    o.material.depthWrite = false;
                 }
             });
 
-            this.mixer = new THREE.AnimationMixer(rawModel);
-            const anims = this.baseModel.userData.animations || [];
-            this.actions = {};
-
-            for (const [key, glbName] of Object.entries(this.config.animations)) {
-                if (!glbName) continue;
-                const clip = anims.find(c => c.name === glbName);
-                if (clip) {
-                    this.actions[key] = this.mixer.clipAction(clip);
-                }
-            }
-
-            if (this.actions.idle) this.actions.idle.play();
-            else if (anims.length > 0) {
-                this.actions['fallback'] = this.mixer.clipAction(anims[0]);
-                this.actions['fallback'].play();
+            // Animation Mixer setup
+            if (rawModel.animations && rawModel.animations.length > 0) {
+                this.mixer = new THREE.AnimationMixer(rawModel);
+                // Setup animations if config matches...
+            } else {
+                this.mixer = null;
             }
 
             this.camera.add(this.group);
-            this.updateDebug(`READY!\nAnims: ${Object.keys(this.actions).join(', ')}`);
+            this.updateDebug(`READY!`);
+
+            // Expose the muzzle flash from the cloned group so index.html can find it if needed
+            // Or better, let index.html find it by name "flash" inside this.group
+
         } catch (e) {
             console.error("FPS Setup Error:", e);
             this.updateDebug(`Setup Error: ${e.message}`, "red");
@@ -133,12 +137,17 @@ class FPSController {
         if (this.group) this.group.visible = visible;
     }
 
+    // Accessor to get the cloned gun group (for shooting effects etc)
+    getGunGroup() {
+        return this.group;
+    }
+
     playAnimation(name) {
         if (this.actions[name]) {
             this.actions[name].reset().play();
         }
     }
-    
+
     handleInput(e) {
         if (!this.group || !this.group.visible) return;
 
@@ -154,6 +163,7 @@ class FPSController {
         if (e.code === 'PageUp') { this.group.position.z -= step; changed = true; }
         if (e.code === 'PageDown') { this.group.position.z += step; changed = true; }
 
+        // Rotation controls
         if (e.code === 'KeyI') { this.group.rotation.x -= rStep; changed = true; }
         if (e.code === 'KeyK') { this.group.rotation.x += rStep; changed = true; }
         if (e.code === 'KeyJ') { this.group.rotation.y -= rStep; changed = true; }
@@ -161,12 +171,12 @@ class FPSController {
 
         if (e.code === 'Equal' || e.code === 'NumpadAdd') {
             const s = this.group.scale.x + 0.0001;
-            this.group.scale.set(s,s,s);
+            this.group.scale.set(s, s, s);
             changed = true;
         }
         if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
             const s = Math.max(0.0001, this.group.scale.x - 0.0001);
-            this.group.scale.set(s,s,s);
+            this.group.scale.set(s, s, s);
             changed = true;
         }
 
@@ -178,4 +188,3 @@ class FPSController {
         }
     }
 }
-window.FPSController = FPSController;
