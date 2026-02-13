@@ -2767,6 +2767,62 @@
                 }
             });
 
+            // FIX: Global ESC Handler for "Back" functionality
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Escape') {
+                    // Force unlock cursor if still locked
+                    if (document.pointerLockElement) {
+                        document.exitPointerLock();
+                        // Let pointerlockchange handle the pause logic
+                        return;
+                    }
+
+                    // 1. HUD Editing Mode -> Save & Exit
+                    if (settings.isEditing) {
+                        const btn = document.getElementById('save-hud-btn');
+                        if (btn && btn.offsetParent !== null) {
+                            btn.click();
+                            return;
+                        }
+                    }
+
+                    // 2. Settings / Pause Menu -> Back (Resume or Main Menu)
+                    const settingsView = document.getElementById('settings-view');
+                    if (settingsView && settingsView.style.display === 'block') {
+                        const btn = document.getElementById('back-btn');
+                        if (btn) btn.click();
+                        return;
+                    }
+
+                    // 3. Lobby Screen -> Back to Main Menu
+                    const lobbyScreen = document.getElementById('lobby-screen');
+                    if (lobbyScreen && lobbyScreen.style.display === 'flex') {
+                        const btn = document.getElementById('lobby-back-btn');
+                        if (btn) btn.click();
+                        return;
+                    }
+
+                    // 4. Game Over Screen -> Menu
+                    const gameOverScreen = document.getElementById('game-over-screen');
+                    if (gameOverScreen && gameOverScreen.style.display === 'none' && document.getElementById('game-over-screen').classList.contains('active')) {
+                        // Note: display might be handled differently, let's rely on style.display as seen in code
+                    }
+                    if (gameOverScreen && gameOverScreen.style.display === 'flex') {
+                        const btn = document.getElementById('menu-return-btn');
+                        if (btn) btn.click();
+                        return;
+                    }
+
+                    // 5. Win Screen -> New Operation
+                    const winScreen = document.getElementById('win-screen');
+                    if (winScreen && winScreen.style.display === 'flex') {
+                        const btn = document.getElementById('win-retry-btn');
+                        if (btn) btn.click();
+                        return;
+                    }
+                }
+            });
+
             document.addEventListener('mousemove', (e) => { if (document.pointerLockElement === document.body && isPlaying) { yaw -= e.movementX * settings.sens; pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * settings.sens)); } });
             document.addEventListener('keydown', (e) => {
                 if (!isPlaying) return; const k = e.code; if (k === 'KeyW') keyState.w = true; if (k === 'KeyA') keyState.a = true; if (k === 'KeyS') keyState.s = true; if (k === 'KeyD') keyState.d = true; if (k === 'Space' && isGrounded) { velocityY = JUMP_FORCE; isGrounded = false; playSound('jump'); } if (k === 'KeyV') toggleCameraMode();
