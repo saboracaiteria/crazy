@@ -773,6 +773,8 @@
         #mobile-ui {
             display: none;
             z-index: 30;
+            touch-action: none;
+            /* Prevent scroll/zoom */
         }
 
         #joystick-zone {
@@ -785,6 +787,7 @@
             border: 2px dashed rgba(0, 255, 65, 0.3);
             border-radius: 50%;
             pointer-events: auto;
+            touch-action: none;
         }
 
         #joystick-knob {
@@ -807,6 +810,7 @@
             height: 100%;
             pointer-events: auto;
             z-index: 5;
+            touch-action: none;
         }
 
         .action-btn {
@@ -821,6 +825,7 @@
             font-weight: bold;
             pointer-events: auto;
             z-index: 20;
+            touch-action: none;
             font-family: 'Orbitron', sans-serif;
             text-shadow: 0 0 5px var(--canaa-gold);
         }
@@ -1088,7 +1093,7 @@
         let scene, camera, renderer, skyMesh, skyUniforms;
         const bulletRaycaster = new THREE.Raycaster(), aimRaycaster = new THREE.Raycaster(), occlusionRaycaster = new THREE.Raycaster();
         let playerGroup, playerMesh, gunGroup, playerArm, enemies = [], walls = [], bullets = [], healthKits = [], currentFloor = null, ramps = [];
-        let score = 0, playerHP = 100, playerLives = 5, isPlaying = false, isPC = true, gamePaused = false, currentLevel = 1, maxLevels = 10, trackedHtmlObjects = [];
+        let score = 0, playerHP = 100, playerLives = 5, isPlaying = false, isPC = !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent), gamePaused = false, currentLevel = 1, maxLevels = 10, trackedHtmlObjects = [];
         let settings = { fov: 70, sens: 0.005, volume: 0.5, isEditing: false, graphics: 'low' };
         const GRAVITY = 0.015, JUMP_FORCE = 0.25, mazeSize = 20, cellSize = 5;
         const mazeMap = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1], [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1], [1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1], [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], [1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1], [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1], [1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1], [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], [1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1], [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1], [1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1], [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1], [1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1], [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1], [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]];
@@ -2828,19 +2833,33 @@
                 if (!isPlaying) return; const k = e.code; if (k === 'KeyW') keyState.w = true; if (k === 'KeyA') keyState.a = true; if (k === 'KeyS') keyState.s = true; if (k === 'KeyD') keyState.d = true; if (k === 'Space' && isGrounded) { velocityY = JUMP_FORCE; isGrounded = false; playSound('jump'); } if (k === 'KeyV') toggleCameraMode();
             });
             document.addEventListener('keyup', (e) => { const k = e.code; if (k === 'KeyW') keyState.w = false; if (k === 'KeyA') keyState.a = false; if (k === 'KeyS') keyState.s = false; if (k === 'KeyD') keyState.d = false; });
-            document.addEventListener('mousedown', (e) => { if (isPlaying && e.button === 0) isManualFiring = true; if (isPlaying && e.button === 2) isAiming = true; });
+            document.addEventListener('mousedown', (e) => {
+                // FIX: Re-lock pointer if lost while playing
+                if (isPlaying && isPC && !document.pointerLockElement) {
+                    document.body.requestPointerLock();
+                }
+                if (isPlaying && e.button === 0) isManualFiring = true;
+                if (isPlaying && e.button === 2) isAiming = true;
+            });
             document.addEventListener('mouseup', () => { isManualFiring = false; isAiming = false; });
+
+            // Auto-setup mobile UI if detected
+            if (!isPC) {
+                document.getElementById('mobile-ui').style.display = 'block';
+                document.getElementById('mode-switch-btn').innerText = "📱";
+            }
+
             setupMobileControls();
         }
 
         function setupMobileControls() {
             let joyId = null, aimId = null, fireId = null, jSX, jSY, lTX, lTY, fTX, fTY; const jz = document.getElementById('joystick-zone');
-            jz.addEventListener('touchstart', (e) => { if (!settings.isEditing) { const t = e.changedTouches[0]; joyId = t.identifier; jSX = t.clientX; jSY = t.clientY; } });
-            jz.addEventListener('touchmove', (e) => { if (settings.isEditing) return; for (let t of e.changedTouches) if (t.identifier === joyId) { const dx = t.clientX - jSX, dy = t.clientY - jSY, d = Math.min(50, Math.sqrt(dx * dx + dy * dy)), a = Math.atan2(dy, dx); document.getElementById('joystick-knob').style.transform = `translate(${Math.cos(a) * d}px, ${Math.sin(a) * d}px)`; moveInput.x = (Math.cos(a) * d) / 50; moveInput.y = (Math.sin(a) * d) / 50; } });
-            jz.addEventListener('touchend', (e) => { for (let t of e.changedTouches) if (t.identifier === joyId) { joyId = null; document.getElementById('joystick-knob').style.transform = ''; moveInput.x = 0; moveInput.y = 0; } });
-            document.getElementById('aim-zone').addEventListener('touchstart', (e) => { const t = e.changedTouches[0]; aimId = t.identifier; lTX = t.clientX; lTY = t.clientY; });
-            document.getElementById('aim-zone').addEventListener('touchmove', (e) => { for (let t of e.changedTouches) if (t.identifier === aimId) { yaw -= (t.clientX - lTX) * settings.sens * 2.2; pitch = Math.max(-1.5, Math.min(1.5, pitch - (t.clientY - lTY) * settings.sens * 2.2)); lTX = t.clientX; lTY = t.clientY; } });
-            const fb = document.getElementById('fire-btn'); fb.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.changedTouches[0]; fireId = t.identifier; fTX = t.clientX; fTY = t.clientY; isManualFiring = true; });
+            jz.addEventListener('touchstart', (e) => { if (e.cancelable) e.preventDefault(); if (!settings.isEditing) { const t = e.changedTouches[0]; joyId = t.identifier; jSX = t.clientX; jSY = t.clientY; } }, { passive: false });
+            jz.addEventListener('touchmove', (e) => { if (e.cancelable) e.preventDefault(); if (settings.isEditing) return; for (let t of e.changedTouches) if (t.identifier === joyId) { const dx = t.clientX - jSX, dy = t.clientY - jSY, d = Math.min(50, Math.sqrt(dx * dx + dy * dy)), a = Math.atan2(dy, dx); document.getElementById('joystick-knob').style.transform = `translate(${Math.cos(a) * d}px, ${Math.sin(a) * d}px)`; moveInput.x = (Math.cos(a) * d) / 50; moveInput.y = (Math.sin(a) * d) / 50; } }, { passive: false });
+            jz.addEventListener('touchend', (e) => { if (e.cancelable) e.preventDefault(); for (let t of e.changedTouches) if (t.identifier === joyId) { joyId = null; document.getElementById('joystick-knob').style.transform = ''; moveInput.x = 0; moveInput.y = 0; } });
+            document.getElementById('aim-zone').addEventListener('touchstart', (e) => { if (e.cancelable) e.preventDefault(); const t = e.changedTouches[0]; aimId = t.identifier; lTX = t.clientX; lTY = t.clientY; }, { passive: false });
+            document.getElementById('aim-zone').addEventListener('touchmove', (e) => { if (e.cancelable) e.preventDefault(); for (let t of e.changedTouches) if (t.identifier === aimId) { yaw -= (t.clientX - lTX) * settings.sens * 2.2; pitch = Math.max(-1.5, Math.min(1.5, pitch - (t.clientY - lTY) * settings.sens * 2.2)); lTX = t.clientX; lTY = t.clientY; } }, { passive: false });
+            const fb = document.getElementById('fire-btn'); fb.addEventListener('touchstart', (e) => { if (e.cancelable) e.preventDefault(); const t = e.changedTouches[0]; fireId = t.identifier; fTX = t.clientX; fTY = t.clientY; isManualFiring = true; }, { passive: false });
             fb.addEventListener('touchmove', (e) => { if (settings.isEditing) return; for (let t of e.changedTouches) if (t.identifier === fireId) { yaw -= (t.clientX - fTX) * settings.sens * 2.2; pitch = Math.max(-1.5, Math.min(1.5, pitch - (t.clientY - fTY) * settings.sens * 2.2)); fTX = t.clientX; fTY = t.clientY; } });
             fb.addEventListener('touchend', () => isManualFiring = false);
             document.getElementById('aim-btn').addEventListener('touchstart', (e) => { e.preventDefault(); isAiming = !isAiming; });
